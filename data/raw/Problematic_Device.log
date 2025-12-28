@@ -1,0 +1,12 @@
+<Huawei>display lldp neighbor brief
+Local Intf    Exptime  Neighbor Dev            Neighbor Intf
+GE1/0/1       101      Switch-A                Te0/1
+GE1/0/1       102      Switch-B                Te0/1
+GE1/0/2       103      -                       -
+GE1/0/3       104                              Te0/3
+
+[Huawei]display eth-trunk
+Eth-Trunk1   LACP     1   1G(a)   1G(a)   up
+  Port Status
+  GE1/0/10     Product: GigabitEthernet    Status: up
+  GE1/0/11     Product: GigabitEthernet    Status: up

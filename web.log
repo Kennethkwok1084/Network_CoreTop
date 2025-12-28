@@ -1,0 +1,9 @@
+nohup: 忽略输入
+<frozen runpy>:128: RuntimeWarning: 'topo.web.app' found in sys.modules after import of package 'topo.web', but prior to execution of 'topo.web.app'; this may result in unpredictable behaviour
+🚀 Web 服务器启动: http://0.0.0.0:5000
+📁 数据库: topo.db
+
+ * Serving Flask app 'app'
+ * Debug mode: off
+Address already in use
+Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.

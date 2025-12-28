@@ -1,0 +1,19 @@
+```mermaid
+graph LR
+
+    %% 节点定义
+    Core[Core]:::center
+    Core_CSS_Backup[Core CSS Backup]
+    Huawei_Access_01[Huawei Access 01]
+    Ruijie_Building_A[Ruijie Building A]
+
+    %% 链路定义
+    Core -->|GigabitEthernet1/6/0/21 → TenGigabitEthernet0/52|] Ruijie_Building_A
+    Core -->|GigabitEthernet1/6/0/22 → GigabitEthernet0/0/1|] Huawei_Access_01
+    Core -->|XGigabitEthernet1/0/1 → XGigabitEthernet1/0/2|] Core_CSS_Backup
+
+    %% 样式定义
+    classDef center fill:#e6f7ff,stroke:#1890ff,stroke-width:3px
+    classDef suspect fill:#ffe6e6,stroke:#ff4d4f,stroke-width:2px
+    classDef trunk stroke:#52c41a,stroke-width:3px
+```

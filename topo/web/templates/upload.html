@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}文件上传{% endblock %}
+
+{% block content %}
+<h2 style="color: #2c3e50; margin-bottom: 20px;">📤 上传日志文件</h2>
+
+<div class="card" style="max-width: 600px;">
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="file">选择日志文件 *</label>
+            <input type="file" id="file" name="file" accept=".log,.txt" required
+                   style="width: 100%; padding: 10px; border: 2px dashed #ddd; border-radius: 4px; cursor: pointer;">
+            <small style="color: #999; display: block; margin-top: 5px;">
+                支持格式：.log, .txt | 最大 100MB
+            </small>
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="auto_import" checked>
+                上传后自动导入解析
+            </label>
+            <small style="color: #999; display: block; margin-left: 20px;">
+                自动提取设备信息并构建拓扑
+            </small>
+        </div>
+        
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; margin-top: 10px;">
+            上传文件
+        </button>
+    </form>
+</div>
+
+<div style="margin-top: 30px;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px;">📝 日志文件格式要求</h3>
+    
+    <div class="card">
+        <p style="margin-bottom: 15px; color: #666;">
+            日志文件应包含以下命令的输出（华为设备）：
+        </p>
+        
+        <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; font-family: monospace; font-size: 13px;">
+            <div style="margin-bottom: 8px;">✓ display lldp neighbor brief</div>
+            <div style="margin-bottom: 8px;">✓ display lldp neighbor</div>
+            <div style="margin-bottom: 8px;">✓ display eth-trunk</div>
+            <div style="margin-bottom: 8px;">✓ display interface description</div>
+            <div style="margin-bottom: 8px;">✓ display stp brief</div>
+        </div>
+        
+        <p style="margin-top: 15px; color: #666;">
+            <strong>获取方式：</strong>
+        </p>
+        <ol style="margin: 10px 0 0 20px; color: #666;">
+            <li>SSH 登录到交换机</li>
+            <li>执行命令：<code>screen-length 0 temporary</code></li>
+            <li>依次执行上述命令，复制输出</li>
+            <li>保存为 .log 文件后上传</li>
+        </ol>
+    </div>
+</div>
+
+<div style="margin-top: 30px;">
+    <h3 style="color: #2c3e50; margin-bottom: 15px;">🤖 或使用自动采集</h3>
+    
+    <div class="card" style="background: #f0f7ff;">
+        <p style="color: #666; margin-bottom: 15px;">
+            推荐使用 <strong>设备管理</strong> 功能配置交换机信息，系统将自动通过 SSH 采集数据：
+        </p>
+        
+        <a href="{{ url_for('manage_devices') }}" class="btn btn-primary">
+            前往设备管理 →
+        </a>
+        
+        <ul style="margin: 15px 0 0 20px; color: #666;">
+            <li>无需手动复制粘贴命令输出</li>
+            <li>支持定时自动采集</li>
+            <li>采集结果自动保存并导入</li>
+            <li>支持批量管理多台设备</li>
+        </ul>
+    </div>
+</div>
+
+<style>
+    .form-group {
+        margin-bottom: 20px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #2c3e50;
+        font-weight: 500;
+    }
+    code {
+        background: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: monospace;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}

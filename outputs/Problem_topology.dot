@@ -1,0 +1,13 @@
+digraph topology {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+
+  "Problem" [style="rounded,filled", fillcolor=lightblue];
+  "Switch-A";
+  "Switch-B";
+  "Unknown";
+
+  "Problem" -> "Switch-A" [label="GigabitEthernet1/0/1 ↔ TenGigabitEthernet0/1", style=solid];
+  "Problem" -> "Switch-B" [label="GigabitEthernet1/0/1 ↔ TenGigabitEthernet0/1", style=solid];
+  "Problem" -> "Unknown" [label="GigabitEthernet1/0/2 ↔ -", style=solid];
+}

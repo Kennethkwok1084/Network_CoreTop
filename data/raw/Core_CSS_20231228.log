@@ -1,0 +1,30 @@
+<Huawei>display lldp neighbor brief
+Local Intf    Exptime  Neighbor Dev            Neighbor Intf
+GE1/6/0/21    101      Ruijie-Building-A       Te0/52
+GE1/6/0/22    102      Huawei-Access-01        GE0/0/1
+XGE1/0/1      120      Core-CSS-Backup         XGE1/0/2
+
+[Huawei]display eth-trunk
+Eth-Trunk6   NORMAL   1   1000M(a)  1000M(a)  up
+  Port Status
+  GE1/6/0/19    Product: GigabitEthernet     Status: up
+  GE1/6/0/20    Product: GigabitEthernet     Status: up
+
+Eth-Trunk10  LACP     1   10G(a)    10G(a)    up
+  Port Status
+  XGE1/0/3      Product: XGigabitEthernet    Status: up
+  XGE1/0/4      Product: XGigabitEthernet    Status: up
+
+[Huawei]display interface description
+Interface                      PHY   Protocol  Description
+GigabitEthernet1/6/0/21        up    up        To Building A Floor 3
+GigabitEthernet1/6/0/22        up    up        To Access Switch Room B
+Eth-Trunk6                     up    up        Uplink to Core
+XGE1/0/1                       up    up        Inter-Core Link
+
+[Huawei]display stp brief
+ MSTID  Port                        Role  State
+ 0      GigabitEthernet1/6/0/21     DESI  Forwarding
+ 0      GigabitEthernet1/6/0/22     ALTE  Discarding
+ 0      Eth-Trunk6                  ROOT  Forwarding
+ 0      XGE1/0/1                    DESI  Forwarding

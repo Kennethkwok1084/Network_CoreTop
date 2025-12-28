@@ -1,0 +1,13 @@
+digraph topology {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+
+  "Core" [style="rounded,filled", fillcolor=lightblue];
+  "Core-CSS-Backup";
+  "Huawei-Access-01";
+  "Ruijie-Building-A";
+
+  "Core" -> "Ruijie-Building-A" [label="GigabitEthernet1/6/0/21 ↔ TenGigabitEthernet0/52", style=solid];
+  "Core" -> "Huawei-Access-01" [label="GigabitEthernet1/6/0/22 ↔ GigabitEthernet0/0/1", style=solid];
+  "Core" -> "Core-CSS-Backup" [label="XGigabitEthernet1/0/1 ↔ XGigabitEthernet1/0/2", style=solid];
+}

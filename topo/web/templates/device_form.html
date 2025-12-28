@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}{{ '添加设备' if action == 'add' else '编辑设备' }}{% endblock %}
+
+{% block content %}
+<h2 style="color: #2c3e50; margin-bottom: 20px;">
+    {{ '➕ 添加新设备' if action == 'add' else '✏️ 编辑设备' }}
+</h2>
+
+<div class="card" style="max-width: 800px;">
+    <form method="POST">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- 左列 -->
+            <div>
+                <div class="form-group">
+                    <label for="device_name">设备名称 *</label>
+                    <input type="text" id="device_name" name="device_name" 
+                           value="{{ device.device_name if device else '' }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="device_type">设备类型 *</label>
+                    <select id="device_type" name="device_type" required>
+                        <option value="huawei" {% if device and device.device_type == 'huawei' %}selected{% endif %}>华为 Huawei</option>
+                        <option value="cisco" {% if device and device.device_type == 'cisco' %}selected{% endif %}>思科 Cisco</option>
+                        <option value="h3c" {% if device and device.device_type == 'h3c' %}selected{% endif %}>华三 H3C</option>
+                        <option value="ruijie" {% if device and device.device_type == 'ruijie' %}selected{% endif %}>锐捷 Ruijie</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="model">设备型号</label>
+                    <input type="text" id="model" name="model" 
+                           value="{{ device.model if device else '' }}"
+                           placeholder="例如: S12700E-6">
+                </div>
+                
+                <div class="form-group">
+                    <label for="mgmt_ip">管理 IP *</label>
+                    <input type="text" id="mgmt_ip" name="mgmt_ip" 
+                           value="{{ device.mgmt_ip if device else '' }}" 
+                           placeholder="192.168.1.1" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="mgmt_port">SSH 端口</label>
+                    <input type="number" id="mgmt_port" name="mgmt_port" 
+                           value="{{ device.mgmt_port if device else 22 }}" 
+                           min="1" max="65535">
+                </div>
+            </div>
+            
+            <!-- 右列 -->
+            <div>
+                <div class="form-group">
+                    <label for="username">SSH 用户名 *</label>
+                    <input type="text" id="username" name="username" 
+                           value="{{ device.username if device else '' }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">SSH 密码 {{ '*' if action == 'add' else '(留空不修改)' }}</label>
+                    <input type="password" id="password" name="password" 
+                           {{ 'required' if action == 'add' else '' }}
+                           autocomplete="new-password">
+                </div>
+                
+                <div class="form-group">
+                    <label for="enable_password">Enable 密码（可选）</label>
+                    <input type="password" id="enable_password" name="enable_password">
+                </div>
+                
+                <div class="form-group">
+                    <label for="group_name">设备分组</label>
+                    <input type="text" id="group_name" name="group_name" 
+                           value="{{ device.group_name if device else '' }}"
+                           placeholder="例如: 核心交换机">
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">备注说明</label>
+                    <textarea id="description" name="description" rows="3" 
+                              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">{{ device.description if device else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 自动采集配置 -->
+        <div style="border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px;">
+            <h3 style="color: #2c3e50; margin-bottom: 15px;">自动采集设置</h3>
+            
+            <div style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="auto_collect" name="auto_collect" 
+                               {% if device and device.auto_collect %}checked{% endif %}>
+                        启用自动采集
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="collect_interval">采集间隔（秒）</label>
+                    <input type="number" id="collect_interval" name="collect_interval" 
+                           value="{{ device.collect_interval if device else 86400 }}" 
+                           min="3600" step="3600">
+                    <small style="color: #999; display: block; margin-top: 5px;">
+                        默认 86400 秒（24小时）
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 按钮 -->
+        <div style="margin-top: 30px; display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-primary" style="padding: 10px 30px;">
+                {{ '添加设备' if action == 'add' else '保存修改' }}
+            </button>
+            <a href="{{ url_for('manage_devices') }}" class="btn" 
+               style="padding: 10px 30px; background: #f0f0f0; color: #666;">取消</a>
+        </div>
+    </form>
+</div>
+
+<style>
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: #2c3e50;
+        font-weight: 500;
+    }
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group input[type="number"],
+    .form-group select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #1890ff;
+    }
+</style>
+{% endblock %}

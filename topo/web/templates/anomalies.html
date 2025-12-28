@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}异常检测 - GCC 拓扑管理{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin: 2rem 0 1rem 0;">
+    <h2 style="color: #2c3e50;">异常检测</h2>
+    <div>
+        <a href="/anomalies" class="btn btn-primary">全部</a>
+        <a href="/anomalies?severity=error" class="btn btn-primary" style="background: #e74c3c;">错误</a>
+        <a href="/anomalies?severity=warning" class="btn btn-primary" style="background: #f39c12;">警告</a>
+    </div>
+</div>
+
+<div class="card">
+    {% if anomalies %}
+    <p style="margin-bottom: 1rem; color: #7f8c8d;">
+        共检测到 <strong>{{ anomalies|length }}</strong> 个异常
+        {% if severity %}(筛选: {{ severity }}){% endif %}
+    </p>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>设备</th>
+                <th>异常类型</th>
+                <th>严重级别</th>
+                <th>详细信息</th>
+                <th>检测时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for anomaly in anomalies %}
+            <tr>
+                <td>
+                    <a href="/device/{{ anomaly.device_name }}" style="text-decoration: none; color: #3498db;">
+                        <strong>{{ anomaly.device_name }}</strong>
+                    </a>
+                </td>
+                <td><code style="background: #f8f9fa; padding: 0.25rem 0.5rem; border-radius: 4px;">{{ anomaly.type }}</code></td>
+                <td>
+                    {% if anomaly.severity == 'error' %}
+                        <span class="badge badge-danger">错误</span>
+                    {% elif anomaly.severity == 'warning' %}
+                        <span class="badge badge-warning">警告</span>
+                    {% else %}
+                        <span class="badge badge-info">信息</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if anomaly.detail %}
+                    <details>
+                        <summary style="cursor: pointer; color: #3498db;">查看详情</summary>
+                        <pre style="margin-top: 0.5rem; font-size: 0.85rem;">{{ anomaly.detail | tojson(indent=2) }}</pre>
+                    </details>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td style="font-size: 0.9rem;">{{ anomaly.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="text-align: center; color: #7f8c8d; padding: 2rem;">
+        {% if severity %}
+        没有检测到 {{ severity }} 级别的异常
+        {% else %}
+        未检测到任何异常 ✓
+        {% endif %}
+    </p>
+    {% endif %}
+</div>
+
+<!-- 异常类型说明 -->
+<div class="card">
+    <h2>异常类型说明</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>类型</th>
+                <th>说明</th>
+                <th>可能原因</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>suspect_loop</code></td>
+                <td>疑似环路</td>
+                <td>单个物理接口出现多个不同 LLDP 邻居，可能存在环路或链路抖动</td>
+            </tr>
+            <tr>
+                <td><code>suspect_mixed_link</code></td>
+                <td>疑似混合链路</td>
+                <td>同一接口的 LLDP 邻居与接口描述指向不同设备</td>
+            </tr>
+            <tr>
+                <td><code>trunk_inconsistent</code></td>
+                <td>Trunk 不一致</td>
+                <td>Trunk 成员接口指向不同的邻居设备，可能配置错误</td>
+            </tr>
+            <tr>
+                <td><code>unstable_neighbor</code></td>
+                <td>LLDP 邻居不稳定</td>
+                <td>邻居 Exptime < 60 秒，可能链路质量差或 LLDP 配置问题</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

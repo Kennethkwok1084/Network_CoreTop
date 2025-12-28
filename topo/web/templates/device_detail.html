@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}{{ device.name }} - 设备详情{% endblock %}
+
+{% block extra_css %}
+<style>
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .info-item {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 4px;
+    }
+    .info-item label {
+        display: block;
+        font-size: 0.85rem;
+        color: #7f8c8d;
+        margin-bottom: 0.25rem;
+    }
+    .info-item .value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+    pre {
+        background: #2c3e50;
+        color: #ecf0f1;
+        padding: 1rem;
+        border-radius: 4px;
+        overflow-x: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin: 2rem 0 1rem 0;">
+    <h2 style="color: #2c3e50;">
+        <a href="/" style="color: #3498db; text-decoration: none;">←</a>
+        {{ device.name }}
+    </h2>
+    <div>
+        <a href="/api/device/{{ device.name }}/export/mermaid" class="btn btn-primary" download>下载 Mermaid</a>
+        <a href="/api/device/{{ device.name }}/export/dot" class="btn btn-primary" download>下载 DOT</a>
+    </div>
+</div>
+
+<!-- 设备信息 -->
+<div class="card">
+    <h2>设备信息</h2>
+    <div class="detail-grid">
+        <div class="info-item">
+            <label>设备名</label>
+            <div class="value">{{ device.name }}</div>
+        </div>
+        <div class="info-item">
+            <label>管理 IP</label>
+            <div class="value">{{ device.mgmt_ip or '-' }}</div>
+        </div>
+        <div class="info-item">
+            <label>型号</label>
+            <div class="value">{{ device.model or '-' }}</div>
+        </div>
+        <div class="info-item">
+            <label>创建时间</label>
+            <div class="value">{{ device.created_at }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- 拓扑图 -->
+<div class="card">
+    <h2>拓扑图</h2>
+    <div class="mermaid-container">
+        <pre class="mermaid">{{ mermaid_code }}</pre>
+    </div>
+</div>
+
+<!-- 链路列表 -->
+<div class="card">
+    <h2>链路列表 ({{ links|length }} 条)</h2>
+    {% if links %}
+    <table>
+        <thead>
+            <tr>
+                <th>本地接口</th>
+                <th>对端设备</th>
+                <th>对端接口</th>
+                <th>类型</th>
+                <th>可信度</th>
+                <th>备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in links %}
+            <tr>
+                <td>{{ link.src_if }}</td>
+                <td><strong>{{ link.dst_device }}</strong></td>
+                <td>{{ link.dst_if or '-' }}</td>
+                <td>
+                    {% if link.link_type == 'trunk' %}
+                        <span class="badge badge-info">Trunk</span>
+                    {% else %}
+                        <span class="badge">物理</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if link.confidence == 'trusted' %}
+                        <span class="badge badge-success">可信</span>
+                    {% elif link.confidence == 'suspect' %}
+                        <span class="badge badge-warning">可疑</span>
+                    {% else %}
+                        <span class="badge">忽略</span>
+                    {% endif %}
+                </td>
+                <td>{{ link.notes or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #7f8c8d;">暂无链路数据</p>
+    {% endif %}
+</div>
+
+<!-- 异常列表 -->
+{% if anomalies %}
+<div class="card">
+    <h2>检测到的异常 ({{ anomalies|length }} 个)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>类型</th>
+                <th>严重级别</th>
+                <th>详情</th>
+                <th>检测时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for anomaly in anomalies %}
+            <tr>
+                <td><code>{{ anomaly.type }}</code></td>
+                <td>
+                    {% if anomaly.severity == 'error' %}
+                        <span class="badge badge-danger">错误</span>
+                    {% elif anomaly.severity == 'warning' %}
+                        <span class="badge badge-warning">警告</span>
+                    {% else %}
+                        <span class="badge badge-info">信息</span>
+                    {% endif %}
+                </td>
+                <td style="font-size: 0.9rem;">{{ anomaly.detail_json or '-' }}</td>
+                <td>{{ anomaly.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ 
+        startOnLoad: true,
+        theme: 'default',
+        flowchart: { useMaxWidth: true }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,494 @@
+#!/usr/bin/env python3
+"""
+Flask Web 应用 - 完整管理系统
+包含用户认证、设备管理、任务调度、文件上传等功能
+"""
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
+from functools import wraps
+from pathlib import Path
+import json
+import tempfile
+import os
+from datetime import datetime, timedelta
+from werkzeug.utils import secure_filename
+
+from topo.db.dao import TopoDAO
+from topo.exporter.mermaid import MermaidExporter
+from topo.rules.detector import AnomalyDetector
+from topo.management.auth import UserAuth
+from topo.management.device_manager import DeviceManager
+from topo.management.collector import DeviceCollector
+from topo.management.task_scheduler import TaskScheduler
+# from topo.parser.__main__ import parse_log_file  # 暂时不用
+
+
+def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"):
+    """创建 Flask 应用"""
+    app = Flask(__name__)
+    app.config['DATABASE'] = db_path
+    app.config['UPLOAD_FOLDER'] = upload_folder
+    app.config['LOG_FOLDER'] = log_folder
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    
+    # 确保目录存在
+    Path(upload_folder).mkdir(parents=True, exist_ok=True)
+    Path(log_folder).mkdir(parents=True, exist_ok=True)
+    
+    # ========== 认证装饰器 ==========
+    def login_required(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login', next=request.url))
+            return f(*args, **kwargs)
+        return decorated_function
+    
+    def admin_required(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            if session.get('role') != 'admin':
+                flash('需要管理员权限', 'error')
+                return redirect(url_for('index'))
+            return f(*args, **kwargs)
+        return decorated_function
+    
+    # ========== 认证路由 ==========
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        """用户登录"""
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            
+            auth = UserAuth(app.config['DATABASE'])
+            user = auth.verify_password(username, password)
+            
+            if user:
+                session.permanent = True
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                session['role'] = user['role']
+                
+                # 记录登录日志
+                auth.log_operation(
+                    user['id'], 
+                    'login',
+                    ip_address=request.remote_addr,
+                    user_agent=request.headers.get('User-Agent')
+                )
+                
+                flash(f'欢迎回来，{username}！', 'success')
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('index'))
+            else:
+                flash('用户名或密码错误', 'error')
+        
+        return render_template('login.html')
+    
+    @app.route('/logout')
+    def logout():
+        """用户登出"""
+        if 'user_id' in session:
+            auth = UserAuth(app.config['DATABASE'])
+            auth.log_operation(
+                session['user_id'],
+                'logout',
+                ip_address=request.remote_addr
+            )
+        
+        session.clear()
+        flash('已成功登出', 'info')
+        return redirect(url_for('login'))
+    
+    # ========== 主页面路由 ==========
+    @app.route('/')
+    @login_required
+    def index():
+        """设备列表页（拓扑设备）"""
+        with TopoDAO(app.config['DATABASE']) as dao:
+            devices = dao.devices.list_all()
+            
+            # 统计信息（简化版）
+            stats = {
+                'total_devices': len(devices),
+                'total_anomalies': 0,
+                'total_links': 0
+            }
+            
+            # 为每个设备添加链路和异常数量
+            for device in devices:
+                links = dao.links.get_by_device(device['device_name'])
+                anomalies = dao.anomalies.list_by_device(device['id'])
+                device['link_count'] = len(links)
+                device['anomaly_count'] = len(anomalies)
+                stats['total_links'] += len(links)
+                stats['total_anomalies'] += len(anomalies)
+        
+        return render_template('index.html', devices=devices, stats=stats)
+    
+    @app.route('/device/<device_name>')
+    @login_required
+    def device_detail(device_name):
+        """设备详情页"""
+        with TopoDAO(app.config['DATABASE']) as dao:
+            device = dao.devices.get_by_name(device_name)
+            if not device:
+                flash('设备不存在', 'error')
+                return redirect(url_for('index'))
+            
+            # 获取链路信息
+            links = dao.links.get_by_device(device['device_name'])
+            
+            # 获取异常信息
+            anomalies = dao.anomalies.list_by_device(device['id'])
+        
+        return render_template('device_detail.html', 
+                             device=device, 
+                             links=links, 
+                             anomalies=anomalies)
+    
+    @app.route('/anomalies')
+    @login_required
+    def anomalies():
+        """异常检测页"""
+        with TopoDAO(app.config['DATABASE']) as dao:
+            all_anomalies = dao.anomalies.list_all()
+            
+            # 关联设备名称
+            for anomaly in all_anomalies:
+                device = dao.devices.get(anomaly['device_id'])
+                anomaly['device_name'] = device['device_name'] if device else 'Unknown'
+        
+        return render_template('anomalies.html', anomalies=all_anomalies)
+    
+    # ========== 设备管理路由 ==========
+    @app.route('/manage/devices')
+    @login_required
+    def manage_devices():
+        """管理设备列表"""
+        device_mgr = DeviceManager(app.config['DATABASE'])
+        devices = device_mgr.list_devices()
+        return render_template('manage_devices.html', devices=devices)
+    
+    @app.route('/manage/devices/add', methods=['GET', 'POST'])
+    @login_required
+    def add_device():
+        """添加设备"""
+        if request.method == 'POST':
+            try:
+                device_mgr = DeviceManager(app.config['DATABASE'])
+                device_id = device_mgr.add_device(
+                    device_name=request.form['device_name'],
+                    device_type=request.form['device_type'],
+                    model=request.form.get('model'),
+                    mgmt_ip=request.form['mgmt_ip'],
+                    mgmt_port=int(request.form.get('mgmt_port', 22)),
+                    username=request.form['username'],
+                    password=request.form['password'],
+                    enable_password=request.form.get('enable_password'),
+                    description=request.form.get('description'),
+                    group_name=request.form.get('group_name'),
+                    auto_collect='auto_collect' in request.form,
+                    collect_interval=int(request.form.get('collect_interval', 86400)),
+                    created_by=session['user_id']
+                )
+                
+                # 记录操作日志
+                auth = UserAuth(app.config['DATABASE'])
+                auth.log_operation(
+                    session['user_id'],
+                    'add_device',
+                    target_type='device',
+                    target_id=device_id,
+                    details=json.dumps({'device_name': request.form['device_name']})
+                )
+                
+                flash(f'设备 {request.form["device_name"]} 添加成功', 'success')
+                return redirect(url_for('manage_devices'))
+            except Exception as e:
+                flash(f'添加失败: {str(e)}', 'error')
+        
+        return render_template('device_form.html', action='add')
+    
+    @app.route('/manage/devices/<int:device_id>/edit', methods=['GET', 'POST'])
+    @login_required
+    def edit_device(device_id):
+        """编辑设备"""
+        device_mgr = DeviceManager(app.config['DATABASE'])
+        
+        if request.method == 'POST':
+            try:
+                update_data = {
+                    'device_name': request.form['device_name'],
+                    'device_type': request.form['device_type'],
+                    'model': request.form.get('model'),
+                    'mgmt_ip': request.form['mgmt_ip'],
+                    'mgmt_port': int(request.form.get('mgmt_port', 22)),
+                    'username': request.form['username'],
+                    'description': request.form.get('description'),
+                    'group_name': request.form.get('group_name'),
+                    'auto_collect': int('auto_collect' in request.form),
+                    'collect_interval': int(request.form.get('collect_interval', 86400)),
+                }
+                
+                # 只有提供了密码才更新
+                if request.form.get('password'):
+                    update_data['password'] = request.form['password']
+                if request.form.get('enable_password'):
+                    update_data['enable_password'] = request.form['enable_password']
+                
+                device_mgr.update_device(device_id, **update_data)
+                
+                flash('设备更新成功', 'success')
+                return redirect(url_for('manage_devices'))
+            except Exception as e:
+                flash(f'更新失败: {str(e)}', 'error')
+        
+        device = device_mgr.get_device(device_id)
+        if not device:
+            flash('设备不存在', 'error')
+            return redirect(url_for('manage_devices'))
+        
+        return render_template('device_form.html', action='edit', device=device)
+    
+    @app.route('/manage/devices/<int:device_id>/delete', methods=['POST'])
+    @admin_required
+    def delete_device(device_id):
+        """删除设备"""
+        device_mgr = DeviceManager(app.config['DATABASE'])
+        if device_mgr.delete_device(device_id):
+            flash('设备已删除', 'success')
+        else:
+            flash('删除失败', 'error')
+        return redirect(url_for('manage_devices'))
+    
+    # ========== 任务管理路由 ==========
+    @app.route('/manage/tasks')
+    @login_required
+    def manage_tasks():
+        """任务列表"""
+        scheduler = TaskScheduler(app.config['DATABASE'])
+        tasks = scheduler.list_tasks(limit=200)
+        return render_template('manage_tasks.html', tasks=tasks)
+    
+    @app.route('/manage/tasks/create', methods=['POST'])
+    @login_required
+    def create_task():
+        """创建采集任务"""
+        device_id = request.form.get('device_id', type=int)
+        task_type = request.form.get('task_type', 'manual')
+        
+        scheduler = TaskScheduler(app.config['DATABASE'])
+        task_id = scheduler.create_task(device_id, task_type, created_by=session['user_id'])
+        
+        flash(f'任务 #{task_id} 已创建', 'success')
+        return redirect(url_for('manage_tasks'))
+    
+    @app.route('/manage/tasks/<int:task_id>/execute', methods=['POST'])
+    @login_required
+    def execute_task(task_id):
+        """执行采集任务"""
+        scheduler = TaskScheduler(app.config['DATABASE'])
+        collector = DeviceCollector()
+        output_dir = Path(app.config['LOG_FOLDER'])
+        
+        success = scheduler.execute_task(task_id, collector, output_dir)
+        
+        if success:
+            flash(f'任务 #{task_id} 执行成功', 'success')
+        else:
+            flash(f'任务 #{task_id} 执行失败', 'error')
+        
+        return redirect(url_for('manage_tasks'))
+    
+    # ========== 文件上传路由 ==========
+    @app.route('/upload', methods=['GET', 'POST'])
+    @login_required
+    def upload_file():
+        """上传日志文件"""
+        if request.method == 'POST':
+            if 'file' not in request.files:
+                flash('未选择文件', 'error')
+                return redirect(request.url)
+            
+            file = request.files['file']
+            if file.filename == '':
+                flash('未选择文件', 'error')
+                return redirect(request.url)
+            
+            if file:
+                filename = secure_filename(file.filename)
+                filepath = Path(app.config['UPLOAD_FOLDER']) / filename
+                file.save(filepath)
+                
+                # 记录上传
+                import sqlite3
+                conn = sqlite3.connect(app.config['DATABASE'])
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO upload_files 
+                    (filename, original_filename, file_path, file_size, uploaded_by)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (filename, file.filename, str(filepath), filepath.stat().st_size, session['user_id']))
+                conn.commit()
+                upload_id = cursor.lastrowid
+                conn.close()
+                
+                flash(f'文件上传成功: {filename}', 'success')
+                
+                # 自动导入
+                if request.form.get('auto_import') == 'on':
+                    try:
+                        # TODO: 实现导入逻辑
+                        # parse_log_file(str(filepath), app.config['DATABASE'])
+                        flash(f'文件已上传，请使用 CLI 导入', 'info')
+                    except Exception as e:
+                        flash(f'导入失败: {str(e)}', 'error')
+                
+                return redirect(url_for('upload_file'))
+        
+        return render_template('upload.html')
+    
+    # ========== 用户管理路由 ==========
+    @app.route('/manage/users')
+    @admin_required
+    def manage_users():
+        """用户管理"""
+        auth = UserAuth(app.config['DATABASE'])
+        users = auth.list_users(include_inactive=True)
+        return render_template('manage_users.html', users=users)
+    
+    @app.route('/manage/users/add', methods=['POST'])
+    @admin_required
+    def add_user():
+        """添加用户"""
+        try:
+            auth = UserAuth(app.config['DATABASE'])
+            user_id = auth.create_user(
+                username=request.form['username'],
+                password=request.form['password'],
+                email=request.form.get('email'),
+                role=request.form.get('role', 'user')
+            )
+            flash(f'用户 {request.form["username"]} 创建成功', 'success')
+        except Exception as e:
+            flash(f'创建失败: {str(e)}', 'error')
+        
+        return redirect(url_for('manage_users'))
+    
+    # ========== API 路由（原有功能保持） ==========
+    @app.route('/api/device/<device_name>/topology')
+    @login_required
+    def api_device_topology(device_name):
+        """API: 获取设备拓扑（JSON）"""
+        with TopoDAO(app.config['DATABASE']) as dao:
+            device = dao.devices.get_by_name(device_name)
+            if not device:
+                return jsonify({'error': '设备不存在'}), 404
+            
+            exporter = MermaidExporter(dao)
+            mermaid_code = exporter.export_device_topology(
+                device_name,
+                output_file=None,
+                max_phy_links=50
+            )
+            
+            return jsonify({'mermaid': mermaid_code})
+    
+    @app.route('/api/device/<device_name>/export/<format>')
+    @login_required
+    def api_device_export(device_name, format):
+        """API: 导出设备拓扑"""
+        if format not in ['mermaid', 'dot', 'pdf']:
+            return jsonify({'error': '不支持的格式'}), 400
+        
+        with TopoDAO(app.config['DATABASE']) as dao:
+            device = dao.devices.get_by_name(device_name)
+            if not device:
+                return jsonify({'error': '设备不存在'}), 404
+            
+            if format == 'mermaid':
+                exporter = MermaidExporter(dao)
+                content = exporter.export_device_topology(
+                    device_name,
+                    output_file=None,
+                    max_phy_links=50
+                )
+                
+                return content, 200, {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'Content-Disposition': f'attachment; filename={device_name}_topology.mmd'
+                }
+    
+    @app.route('/api/link/mark', methods=['POST'])
+    @login_required
+    def api_mark_link():
+        """API: 标记链路可信度"""
+        data = request.get_json()
+        
+        required = ['device', 'src_if', 'dst_device', 'dst_if', 'confidence']
+        if not all(k in data for k in required):
+            return jsonify({'error': '缺少必需参数'}), 400
+        
+        if data['confidence'] not in ['trusted', 'suspect', 'ignore']:
+            return jsonify({'error': '无效的可信度值'}), 400
+        
+        with TopoDAO(app.config['DATABASE']) as dao:
+            dao.links.update_confidence(
+                data['device'],
+                data['src_if'],
+                data['dst_device'],
+                data['dst_if'],
+                data['confidence']
+            )
+        
+        return jsonify({'success': True})
+    
+    @app.route('/api/detect')
+    @login_required
+    def api_detect():
+        """API: 运行异常检测"""
+        with TopoDAO(app.config['DATABASE']) as dao:
+            devices = dao.devices.list_all()
+            detector = AnomalyDetector(dao)
+            total = 0
+            for device in devices:
+                anomalies = detector.detect_all(device['id'])
+                total += len(anomalies)
+        
+        return jsonify({
+            'success': True,
+            'count': total
+        })
+    
+    return app
+
+
+def main():
+    """命令行启动"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='启动 Web 服务器')
+    parser.add_argument('-d', '--database', default='topo.db', help='数据库路径')
+    parser.add_argument('-p', '--port', type=int, default=5000, help='端口号')
+    parser.add_argument('--host', default='127.0.0.1', help='监听地址')
+    parser.add_argument('--debug', action='store_true', help='调试模式')
+    
+    args = parser.parse_args()
+    
+    app = create_app(args.database)
+    
+    print(f"🚀 Web 服务器启动: http://{args.host}:{args.port}")
+    print(f"📁 数据库: {args.database}")
+    print(f"👤 默认管理员: admin / admin123")
+    print()
+    
+    app.run(host=args.host, port=args.port, debug=args.debug)
+
+
+if __name__ == '__main__':
+    main()

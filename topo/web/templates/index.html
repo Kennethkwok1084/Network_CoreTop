@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}设备列表 - GCC 拓扑管理{% endblock %}
+
+{% block content %}
+<h2 style="margin: 2rem 0 1rem 0; color: #2c3e50;">设备列表</h2>
+
+{% if devices %}
+<div class="stats">
+    <div class="stat-card">
+        <h3>总设备数</h3>
+        <div class="value">{{ devices|length }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #e74c3c;">
+        <h3>有异常设备</h3>
+        <div class="value">{{ devices|selectattr('anomaly_count', 'gt', 0)|list|length }}</div>
+    </div>
+    <div class="stat-card" style="border-left-color: #2ecc71;">
+        <h3>总链路数</h3>
+        <div class="value">{{ devices|sum(attribute='link_count') }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>设备名</th>
+                <th>管理 IP</th>
+                <th>型号</th>
+                <th>链路数</th>
+                <th>异常数</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for device in devices %}
+            <tr>
+                <td><strong>{{ device.name }}</strong></td>
+                <td>{{ device.mgmt_ip or '-' }}</td>
+                <td>{{ device.model or '-' }}</td>
+                <td>{{ device.link_count }}</td>
+                <td>
+                    {% if device.anomaly_count > 0 %}
+                        <span class="badge badge-warning">{{ device.anomaly_count }} 个</span>
+                    {% else %}
+                        <span class="badge badge-success">正常</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/device/{{ device.name }}" class="btn btn-primary">查看详情</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #7f8c8d; padding: 2rem;">
+        暂无设备数据，请先使用 CLI 导入日志文件：
+        <code style="background: #f8f9fa; padding: 0.25rem 0.5rem; border-radius: 4px;">
+            ./topo_cli import-log data/raw/your_log.log
+        </code>
+    </p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}任务管理{% endblock %}
+
+{% block content %}
+<h2 style="color: #2c3e50; margin-bottom: 20px;">📋 采集任务管理</h2>
+
+<div class="card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>任务 ID</th>
+                <th>设备名称</th>
+                <th>设备 IP</th>
+                <th>任务类型</th>
+                <th>状态</th>
+                <th>开始时间</th>
+                <th>完成时间</th>
+                <th>耗时</th>
+                <th>日志文件</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if tasks %}
+                {% for task in tasks %}
+                <tr>
+                    <td><strong>#{{ task.id }}</strong></td>
+                    <td>{{ task.device_name }}</td>
+                    <td>{{ task.mgmt_ip }}</td>
+                    <td>
+                        {% if task.task_type == 'manual' %}
+                            <span class="badge badge-info">手动</span>
+                        {% elif task.task_type == 'scheduled' %}
+                            <span class="badge badge-primary">定时</span>
+                        {% else %}
+                            <span class="badge badge-secondary">自动</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if task.status == 'pending' %}
+                            <span class="badge badge-secondary">待执行</span>
+                        {% elif task.status == 'running' %}
+                            <span class="badge badge-primary">执行中</span>
+                        {% elif task.status == 'success' %}
+                            <span class="badge badge-success">成功</span>
+                        {% else %}
+                            <span class="badge badge-danger">失败</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ task.started_at[:19] if task.started_at else '-' }}</td>
+                    <td>{{ task.completed_at[:19] if task.completed_at else '-' }}</td>
+                    <td>
+                        {% if task.started_at and task.completed_at %}
+                            {{ ((task.completed_at | int) - (task.started_at | int)) }}s
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if task.log_file_path %}
+                            <a href="{{ task.log_file_path }}" style="color: #1890ff;">📄 查看</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if task.status == 'pending' %}
+                            <form method="POST" action="{{ url_for('execute_task', task_id=task.id) }}" 
+                                  style="display: inline;">
+                                <button type="submit" class="btn btn-sm" 
+                                        style="background: #52c41a; color: white;">执行</button>
+                            </form>
+                        {% elif task.status == 'failed' %}
+                            <span style="color: #999; font-size: 12px;" 
+                                  title="{{ task.error_message }}">⚠️ 查看错误</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 40px; color: #999;">
+                        暂无任务记录
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 20px; padding: 15px; background: #f0f7ff; border-left: 4px solid #1890ff; border-radius: 4px;">
+    <strong>💡 说明：</strong>
+    <ul style="margin: 10px 0 0 20px; color: #666;">
+        <li><strong>手动任务：</strong>在设备管理页面点击"采集"按钮创建</li>
+        <li><strong>定时任务：</strong>通过任务调度系统按计划执行</li>
+        <li><strong>自动任务：</strong>设备启用自动采集后自动创建</li>
+        <li><strong>日志文件：</strong>采集成功后会保存到 data/raw/ 目录，可直接导入解析</li>
+    </ul>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+nohup: 忽略输入
+🚀 Web 服务器启动: http://127.0.0.1:5000
+📁 数据库: topo.db
+👤 默认管理员: admin / admin123
+
+ * Serving Flask app 'app_v2'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [28/Dec/2025 22:59:12] "[32mPOST /login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [28/Dec/2025 22:59:12] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [28/Dec/2025 22:59:16] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [28/Dec/2025 22:59:29] "GET /manage/devices HTTP/1.1" 200 -
+127.0.0.1 - - [28/Dec/2025 23:04:02] "GET /manage/devices HTTP/1.1" 200 -
+127.0.0.1 - - [28/Dec/2025 23:04:10] "GET /manage/tasks HTTP/1.1" 200 -
+127.0.0.1 - - [28/Dec/2025 23:04:11] "GET /upload HTTP/1.1" 200 -
+127.0.0.1 - - [28/Dec/2025 23:04:18] "[32mPOST /manage/devices/add HTTP/1.1[0m" 302 -
+127.0.0.1 - - [28/Dec/2025 23:04:34] "GET /manage/devices HTTP/1.1" 200 -

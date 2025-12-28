@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}设备管理{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="color: #2c3e50; margin: 0;">设备配置管理</h2>
+    <a href="{{ url_for('add_device') }}" class="btn btn-primary">➕ 添加新设备</a>
+</div>
+
+<div class="card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>设备名称</th>
+                <th>设备类型</th>
+                <th>型号</th>
+                <th>管理 IP</th>
+                <th>SSH 用户</th>
+                <th>分组</th>
+                <th>自动采集</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if devices %}
+                {% for device in devices %}
+                <tr>
+                    <td><strong>{{ device.device_name }}</strong></td>
+                    <td>{{ device.device_type }}</td>
+                    <td>{{ device.model or '-' }}</td>
+                    <td>{{ device.mgmt_ip }}:{{ device.mgmt_port }}</td>
+                    <td>{{ device.username }}</td>
+                    <td>{{ device.group_name or '-' }}</td>
+                    <td>
+                        {% if device.auto_collect %}
+                            <span class="badge badge-success">开启</span>
+                        {% else %}
+                            <span class="badge badge-secondary">关闭</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if device.is_active %}
+                            <span class="badge badge-success">活动</span>
+                        {% else %}
+                            <span class="badge badge-danger">停用</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ device.created_at[:10] if device.created_at else '-' }}</td>
+                    <td>
+                        <div style="display: flex; gap: 5px;">
+                            <a href="{{ url_for('edit_device', device_id=device.id) }}" 
+                               class="btn btn-sm" style="background: #1890ff; color: white;">编辑</a>
+                            
+                            <form method="POST" action="{{ url_for('create_task') }}" style="display: inline;">
+                                <input type="hidden" name="device_id" value="{{ device.id }}">
+                                <button type="submit" class="btn btn-sm" 
+                                        style="background: #52c41a; color: white;">采集</button>
+                            </form>
+                            
+                            {% if session.role == 'admin' %}
+                            <form method="POST" 
+                                  action="{{ url_for('delete_device', device_id=device.id) }}" 
+                                  style="display: inline;"
+                                  onsubmit="return confirm('确定删除此设备吗？');">
+                                <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 40px; color: #999;">
+                        暂无设备配置<br>
+                        <a href="{{ url_for('add_device') }}" style="color: #1890ff;">点击添加</a>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div style="margin-top: 20px; padding: 15px; background: #f0f7ff; border-left: 4px solid #1890ff; border-radius: 4px;">
+    <strong>💡 说明：</strong>
+    <ul style="margin: 10px 0 0 20px; color: #666;">
+        <li>设备配置用于SSH自动采集交换机信息</li>
+        <li>密码使用加密存储，仅在采集时解密使用</li>
+        <li>开启"自动采集"后，系统将定期自动获取设备配置</li>
+        <li>点击"采集"按钮可立即创建采集任务</li>
+    </ul>
+</div>
+{% endblock %}
