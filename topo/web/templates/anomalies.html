@@ -18,7 +18,7 @@
         共检测到 <strong>{{ anomalies|length }}</strong> 个异常
         {% if severity %}(筛选: {{ severity }}){% endif %}
     </p>
-    
+
     <table>
         <thead>
             <tr>
@@ -37,21 +37,24 @@
                         <strong>{{ anomaly.device_name }}</strong>
                     </a>
                 </td>
-                <td><code style="background: #f8f9fa; padding: 0.25rem 0.5rem; border-radius: 4px;">{{ anomaly.type }}</code></td>
+                <td><code
+                        style="background: #f8f9fa; padding: 0.25rem 0.5rem; border-radius: 4px;">{{ anomaly.type }}</code>
+                </td>
                 <td>
                     {% if anomaly.severity == 'error' %}
-                        <span class="badge badge-danger">错误</span>
+                    <span class="badge badge-danger">错误</span>
                     {% elif anomaly.severity == 'warning' %}
-                        <span class="badge badge-warning">警告</span>
+                    <span class="badge badge-warning">警告</span>
                     {% else %}
-                        <span class="badge badge-info">信息</span>
+                    <span class="badge badge-info">信息</span>
                     {% endif %}
                 </td>
                 <td>
                     {% if anomaly.detail %}
                     <details>
                         <summary style="cursor: pointer; color: #3498db;">查看详情</summary>
-                        <pre style="margin-top: 0.5rem; font-size: 0.85rem;">{{ anomaly.detail | tojson(indent=2) }}</pre>
+                        <pre
+                            style="margin-top: 0.5rem; font-size: 0.85rem;">{{ anomaly.detail | tojson(indent=2) }}</pre>
                     </details>
                     {% else %}
                     -

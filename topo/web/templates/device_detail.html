@@ -10,22 +10,26 @@
         gap: 1rem;
         margin-bottom: 2rem;
     }
+
     .info-item {
         background: #f8f9fa;
         padding: 1rem;
         border-radius: 4px;
     }
+
     .info-item label {
         display: block;
         font-size: 0.85rem;
         color: #7f8c8d;
         margin-bottom: 0.25rem;
     }
+
     .info-item .value {
         font-size: 1.1rem;
         font-weight: 600;
         color: #2c3e50;
     }
+
     pre {
         background: #2c3e50;
         color: #ecf0f1;
@@ -102,18 +106,18 @@
                 <td>{{ link.dst_if or '-' }}</td>
                 <td>
                     {% if link.link_type == 'trunk' %}
-                        <span class="badge badge-info">Trunk</span>
+                    <span class="badge badge-info">Trunk</span>
                     {% else %}
-                        <span class="badge">物理</span>
+                    <span class="badge">物理</span>
                     {% endif %}
                 </td>
                 <td>
                     {% if link.confidence == 'trusted' %}
-                        <span class="badge badge-success">可信</span>
+                    <span class="badge badge-success">可信</span>
                     {% elif link.confidence == 'suspect' %}
-                        <span class="badge badge-warning">可疑</span>
+                    <span class="badge badge-warning">可疑</span>
                     {% else %}
-                        <span class="badge">忽略</span>
+                    <span class="badge">忽略</span>
                     {% endif %}
                 </td>
                 <td>{{ link.notes or '-' }}</td>
@@ -145,11 +149,11 @@
                 <td><code>{{ anomaly.type }}</code></td>
                 <td>
                     {% if anomaly.severity == 'error' %}
-                        <span class="badge badge-danger">错误</span>
+                    <span class="badge badge-danger">错误</span>
                     {% elif anomaly.severity == 'warning' %}
-                        <span class="badge badge-warning">警告</span>
+                    <span class="badge badge-warning">警告</span>
                     {% else %}
-                        <span class="badge badge-info">信息</span>
+                    <span class="badge badge-info">信息</span>
                     {% endif %}
                 </td>
                 <td style="font-size: 0.9rem;">{{ anomaly.detail_json or '-' }}</td>
@@ -165,7 +169,7 @@
 {% block extra_js %}
 <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ 
+    mermaid.initialize({
         startOnLoad: true,
         theme: 'default',
         flowchart: { useMaxWidth: true }
