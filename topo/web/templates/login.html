@@ -154,10 +154,13 @@
             <button type="submit">登录</button>
         </form>
 
-        <div class="default-account">
-            <strong>默认账号：</strong><br>
-            用户名: admin<br>
-            密码: admin123
+        <div class="default-account"
+            style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin-top: 20px; color: #856404; font-size: 13px;">
+            <strong>⚠️ 首次登录</strong><br>
+            系统管理员应该在启动时设置管理员凭证。<br>
+            如果您是系统管理员，请通过以下环境变量配置：<br>
+            <code style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px;">ADMIN_USERNAME</code> 和 <code
+                style="background: #f8f9fa; padding: 2px 4px; border-radius: 3px;">ADMIN_PASSWORD</code>
         </div>
     </div>
 </body>

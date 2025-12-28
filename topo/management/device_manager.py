@@ -16,12 +16,33 @@ class DeviceManager:
     def __init__(self, db_path: str, encryption_key: str = None):
         self.db_path = db_path
         
-        # 加密密钥（生产环境应从环境变量或配置文件读取）
+        # 从环境变量或参数读取加密密钥
         if encryption_key:
-            self.cipher = Fernet(encryption_key.encode())
+            key = encryption_key
         else:
-            # 默认密钥（仅用于开发，生产环境必须更换）
-            self.cipher = Fernet(Fernet.generate_key())
+            key = os.environ.get('FERNET_KEY')
+            if not key:
+                # 如果没有密钥，尝试从配置文件读取
+                config_file = os.path.expanduser('~/.topo_fernet_key')
+                if os.path.exists(config_file):
+                    with open(config_file, 'r') as f:
+                        key = f.read().strip()
+                else:
+                    raise ValueError(
+                        "FATAL: Fernet 加密密钥未找到\n"
+                        "  必须通过以下方式之一提供:\n"
+                        "  1. 环境变量: export FERNET_KEY='<base64密钥>'\n"
+                        "  2. 配置文件: ~/.topo_fernet_key\n"
+                        "\n"
+                        "  生成新密钥: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"\n"
+                        "  保存到: ~/.topo_fernet_key\n"
+                        "  或导出为: export FERNET_KEY='<生成的密钥>'"
+                    )
+        
+        try:
+            self.cipher = Fernet(key.encode() if isinstance(key, str) else key)
+        except Exception as e:
+            raise ValueError(f"ERROR: 无效的 Fernet 密钥格式: {e}")
     
     def _get_connection(self):
         """获取数据库连接"""

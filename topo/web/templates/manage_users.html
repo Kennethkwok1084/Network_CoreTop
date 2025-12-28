@@ -69,6 +69,7 @@
         <h3 style="margin-bottom: 20px;">添加新用户</h3>
 
         <form method="POST" action="{{ url_for('add_user') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
             <div class="form-group">
                 <label>用户名 *</label>
                 <input type="text" name="username" required

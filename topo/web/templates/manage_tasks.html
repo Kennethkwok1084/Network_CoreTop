@@ -52,7 +52,7 @@
                 <td>{{ task.completed_at[:19] if task.completed_at else '-' }}</td>
                 <td>
                     {% if task.started_at and task.completed_at %}
-                    {{ ((task.completed_at | int) - (task.started_at | int)) }}s
+                    {{ format_duration(task.started_at, task.completed_at) }}
                     {% else %}
                     -
                     {% endif %}
@@ -68,6 +68,7 @@
                     {% if task.status == 'pending' %}
                     <form method="POST" action="{{ url_for('execute_task', task_id=task.id) }}"
                         style="display: inline;">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="btn btn-sm" style="background: #52c41a; color: white;">执行</button>
                     </form>
                     {% elif task.status == 'failed' %}

@@ -9,6 +9,10 @@ from pathlib import Path
 import json
 import tempfile
 import os
+import hmac
+import hashlib
+import secrets
+import logging
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 
@@ -22,19 +26,131 @@ from topo.management.task_scheduler import TaskScheduler
 # from topo.parser.__main__ import parse_log_file  # 暂时不用
 
 
+# ========== CSRF 保护工具函数 ==========
+def generate_csrf_token():
+    """生成 CSRF token"""
+    return secrets.token_hex(32)
+
+
+def verify_csrf_token(token: str, session_secret: str) -> bool:
+    """验证 CSRF token"""
+    if not token or not session_secret:
+        return False
+    # 验证 token 是否与 session 中的 secret 匹配
+    expected = hmac.new(
+        session_secret.encode(),
+        b'csrf',
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(token, expected)
+
+
 def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"):
     """创建 Flask 应用"""
+    # 强制从环境变量读取 SECRET_KEY，禁用硬编码默认值
+    secret_key = os.environ.get('SECRET_KEY')
+    if not secret_key:
+        raise ValueError(
+            "FATAL: SECRET_KEY 环境变量未设置。\n"
+            "  为了安全起见，必须通过环境变量提供 SECRET_KEY。\n"
+            "  生成一个强密钥: python3 -c \"import secrets; print(secrets.token_hex(32))\"\n"
+            "  然后设置: export SECRET_KEY='<生成的密钥>'\n"
+            "  或在 .env 文件中配置"
+        )
+    
     app = Flask(__name__)
     app.config['DATABASE'] = db_path
     app.config['UPLOAD_FOLDER'] = upload_folder
     app.config['LOG_FOLDER'] = log_folder
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+    app.config['SECRET_KEY'] = secret_key
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+    
+    # 安全的 Cookie 配置
+    app.config['SESSION_COOKIE_SECURE'] = True  # 仅 HTTPS 传输（生产环境）
+    app.config['SESSION_COOKIE_HTTPONLY'] = True  # 防止 JavaScript 访问
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF 防护
+    
+    # 配置日志记录
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
     
     # 确保目录存在
     Path(upload_folder).mkdir(parents=True, exist_ok=True)
     Path(log_folder).mkdir(parents=True, exist_ok=True)
+    
+    # ========== 辅助函数 ==========
+    def format_duration(started_at, completed_at):
+        """安全计算任务耗时，处理 None 和格式错误"""
+        if not started_at or not completed_at:
+            return '-'
+        
+        try:
+            # 处理 ISO 格式时间戳（形如 '2024-12-28 10:30:45'）
+            if isinstance(started_at, str):
+                started = datetime.fromisoformat(started_at.replace('Z', '+00:00').split('+')[0])
+            else:
+                started = started_at
+            
+            if isinstance(completed_at, str):
+                completed = datetime.fromisoformat(completed_at.replace('Z', '+00:00').split('+')[0])
+            else:
+                completed = completed_at
+            
+            delta = completed - started
+            seconds = int(delta.total_seconds())
+            
+            if seconds < 0:
+                return '-'
+            elif seconds < 60:
+                return f'{seconds}s'
+            elif seconds < 3600:
+                minutes = seconds // 60
+                secs = seconds % 60
+                return f'{minutes}m{secs}s'
+            else:
+                hours = seconds // 3600
+                minutes = (seconds % 3600) // 60
+                return f'{hours}h{minutes}m'
+        except (ValueError, TypeError, AttributeError):
+            return '-'
+    
+    # ========== 上下文处理器 - 在所有模板中注入 csrf_token 和辅助函数 ==========
+    @app.context_processor
+    def inject_globals():
+        """在模板中可用的全局变量"""
+        # 为会话生成 CSRF token
+        if '_csrf_token' not in session:
+            session['_csrf_token'] = generate_csrf_token()
+        
+        return {
+            'csrf_token': session['_csrf_token'],
+            'format_duration': format_duration,  # 时间计算函数
+        }
+    
+    # ========== CSRF 验证装饰器 ==========
+    def csrf_protect(f):
+        """验证 POST 请求的 CSRF token"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if request.method == 'POST':
+                token = request.form.get('_csrf_token', '')
+                if not token:
+                    flash('缺少 CSRF token', 'error')
+                    return redirect(request.referrer or url_for('index'))
+                
+                # 简单的 token 验证（基于 session）
+                if '_csrf_token' not in session or token != session['_csrf_token']:
+                    flash('无效的 CSRF token，请重试', 'error')
+                    return redirect(request.referrer or url_for('index'))
+            
+            return f(*args, **kwargs)
+        return decorated_function
     
     # ========== 认证装饰器 ==========
     def login_required(f):
@@ -176,6 +292,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     
     @app.route('/manage/devices/add', methods=['GET', 'POST'])
     @login_required
+    @csrf_protect
     def add_device():
         """添加设备"""
         if request.method == 'POST':
@@ -216,6 +333,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     
     @app.route('/manage/devices/<int:device_id>/edit', methods=['GET', 'POST'])
     @login_required
+    @csrf_protect
     def edit_device(device_id):
         """编辑设备"""
         device_mgr = DeviceManager(app.config['DATABASE'])
@@ -257,6 +375,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     
     @app.route('/manage/devices/<int:device_id>/delete', methods=['POST'])
     @admin_required
+    @csrf_protect
     def delete_device(device_id):
         """删除设备"""
         device_mgr = DeviceManager(app.config['DATABASE'])
@@ -277,6 +396,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     
     @app.route('/manage/tasks/create', methods=['POST'])
     @login_required
+    @csrf_protect
     def create_task():
         """创建采集任务"""
         device_id = request.form.get('device_id', type=int)
@@ -290,6 +410,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     
     @app.route('/manage/tasks/<int:task_id>/execute', methods=['POST'])
     @login_required
+    @csrf_protect
     def execute_task(task_id):
         """执行采集任务"""
         scheduler = TaskScheduler(app.config['DATABASE'])
@@ -308,6 +429,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     # ========== 文件上传路由 ==========
     @app.route('/upload', methods=['GET', 'POST'])
     @login_required
+    @csrf_protect
     def upload_file():
         """上传日志文件"""
         if request.method == 'POST':
@@ -321,24 +443,70 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
                 return redirect(request.url)
             
             if file:
-                filename = secure_filename(file.filename)
-                filepath = Path(app.config['UPLOAD_FOLDER']) / filename
-                file.save(filepath)
+                import hashlib
                 
-                # 记录上传
+                # 安全的文件名处理
+                original_filename = secure_filename(file.filename)
+                if not original_filename:
+                    flash('无效的文件名', 'error')
+                    return redirect(request.url)
+                
+                # 验证文件类型（仅允许 .log 和 .txt）
+                allowed_extensions = {'.log', '.txt'}
+                file_ext = Path(original_filename).suffix.lower()
+                if file_ext not in allowed_extensions:
+                    flash(f'只支持 {", ".join(allowed_extensions)} 文件类型', 'error')
+                    return redirect(request.url)
+                
+                # 读取文件内容并验证大小
+                file_content = file.read()
+                file_size = len(file_content)
+                
+                # 验证文件大小（100MB 限制已在 Flask 配置中）
+                if file_size == 0:
+                    flash('文件为空', 'error')
+                    return redirect(request.url)
+                
+                # 计算文件哈希，用于避免重复和验证完整性
+                file_hash = hashlib.sha256(file_content).hexdigest()
+                
+                # 使用哈希作为文件名的一部分（防止覆盖和冲突）
+                stem = Path(original_filename).stem
+                hash_filename = f"{stem}_{file_hash[:8]}{file_ext}"
+                
+                filepath = Path(app.config['UPLOAD_FOLDER']) / hash_filename
+                
+                # 确保不覆盖现有文件
+                if filepath.exists():
+                    flash(f'该文件已上传过: {hash_filename}', 'warning')
+                    return redirect(request.url)
+                
+                # 保存文件
+                filepath.write_bytes(file_content)
+                
+                # 记录上传元数据到数据库
                 import sqlite3
                 conn = sqlite3.connect(app.config['DATABASE'])
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO upload_files 
-                    (filename, original_filename, file_path, file_size, uploaded_by)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (filename, file.filename, str(filepath), filepath.stat().st_size, session['user_id']))
+                    (filename, original_filename, file_path, file_size, file_hash, uploaded_by, upload_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    hash_filename, 
+                    original_filename, 
+                    str(filepath), 
+                    file_size,
+                    file_hash,
+                    session['user_id'],
+                    'completed'
+                ))
                 conn.commit()
                 upload_id = cursor.lastrowid
                 conn.close()
                 
-                flash(f'文件上传成功: {filename}', 'success')
+                logger.info(f"用户 {session['user_id']} 上传文件: {original_filename} (hash: {file_hash})")
+                flash(f'文件上传成功: {original_filename}', 'success')
                 
                 # 自动导入
                 if request.form.get('auto_import') == 'on':
@@ -364,6 +532,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     
     @app.route('/manage/users/add', methods=['POST'])
     @admin_required
+    @csrf_protect
     def add_user():
         """添加用户"""
         try:

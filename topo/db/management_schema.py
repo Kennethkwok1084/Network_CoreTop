@@ -138,9 +138,37 @@ def init_management_tables(conn):
     conn.commit()
     
 
-def create_default_admin(conn, username='admin', password='admin123'):
-    """创建默认管理员账号"""
+def create_default_admin(conn, username=None, password=None):
+    """
+    创建默认管理员账号
+    
+    由于安全原因，admin 用户名和密码必须从环境变量提供，不允许硬编码默认值。
+    
+    环境变量:
+    - ADMIN_USERNAME: 管理员用户名（默认: admin）
+    - ADMIN_PASSWORD: 管理员密码（必须提供，最少 12 字符强密码）
+    """
     import bcrypt
+    import os
+    
+    # 从环境变量读取，如果有参数则使用参数（用于自动化）
+    username = username or os.environ.get('ADMIN_USERNAME', 'admin')
+    password = password or os.environ.get('ADMIN_PASSWORD')
+    
+    # 验证密码强度
+    if not password:
+        raise ValueError(
+            "FATAL: 管理员密码未设置\n"
+            "  环境变量 ADMIN_PASSWORD 必须提供\n"
+            "  生成强密码: python3 -c \"import secrets; print(secrets.token_urlsafe(16))\"\n"
+            "  然后设置: export ADMIN_PASSWORD='<生成的密码>'"
+        )
+    
+    if len(password) < 12:
+        raise ValueError(
+            f"ERROR: 管理员密码过弱 (长度 {len(password)}, 需要 >= 12)\n"
+            "  请提供一个强密码 (至少 12 字符，包含大小写、数字、特殊字符)"
+        )
     
     cursor = conn.cursor()
     

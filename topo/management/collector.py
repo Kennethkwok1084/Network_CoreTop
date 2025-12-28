@@ -6,6 +6,7 @@ SSH 自动采集模块
 import paramiko
 import time
 import re
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -91,19 +92,50 @@ class DeviceCollector:
         try:
             # 创建 SSH 客户端
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # 加载已知主机文件（通常是 ~/.ssh/known_hosts）
+            known_hosts_file = os.path.expanduser('~/.ssh/known_hosts')
+            if os.path.exists(known_hosts_file):
+                ssh.load_system_host_keys(known_hosts_file)
+            
+            # 安全策略：拒绝未知主机密钥（防止 MITM 攻击）
+            # 如果需要自动添加，使用环境变量控制
+            auto_add_policy = os.environ.get('SSH_TRUST_NEW_HOSTS', 'false').lower() == 'true'
+            
+            if auto_add_policy:
+                # 仅在明确指定时自动添加（开发/测试环境）
+                logger.warning(
+                    "警告: SSH_TRUST_NEW_HOSTS 已启用，将自动接受未知主机密钥。"
+                    "这在生产环境中不安全！"
+                )
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            else:
+                # 默认策略：拒绝未知主机密钥
+                ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
             
             # 连接设备
             logger.info(f"正在连接设备 {device_config['device_name']} ({device_config['mgmt_ip']})...")
-            ssh.connect(
-                hostname=device_config['mgmt_ip'],
-                port=device_config.get('mgmt_port', 22),
-                username=device_config['username'],
-                password=device_config['password'],
-                timeout=self.timeout,
-                look_for_keys=False,
-                allow_agent=False,
-            )
+            try:
+                ssh.connect(
+                    hostname=device_config['mgmt_ip'],
+                    port=device_config.get('mgmt_port', 22),
+                    username=device_config['username'],
+                    password=device_config['password'],
+                    timeout=self.timeout,
+                    look_for_keys=False,
+                    allow_agent=False,
+                )
+            except paramiko.ssh_exception.SSHException as e:
+                if 'not found in known_hosts' in str(e):
+                    result['error'] = (
+                        f"主机密钥验证失败: {device_config['mgmt_ip']} 未在已知主机列表中\n"
+                        "解决方法:\n"
+                        "1. 手动连接一次以添加主机密钥: ssh -o StrictHostKeyChecking=accept-new admin@{}\n"
+                        "2. 或设置 SSH_TRUST_NEW_HOSTS=true (仅限测试环境)"
+                    ).format(device_config['mgmt_ip'])
+                    logger.error(result['error'])
+                    return result
+                raise
             
             # 获取交互式 shell
             channel = ssh.invoke_shell()
