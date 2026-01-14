@@ -15,13 +15,13 @@
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1rem;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
     .info-item label {
         display: block;
         font-size: 0.85rem;
-        color: rgba(255,255,255,0.9);
+        color: rgba(255, 255, 255, 0.9);
         margin-bottom: 0.25rem;
         font-weight: 500;
     }
@@ -37,7 +37,7 @@
         background: linear-gradient(to bottom, #f8f9fa 0%, #ffffff 100%);
         padding: 2rem;
         border-radius: 12px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
         margin: 2rem 0;
         min-height: 400px;
     }
@@ -50,7 +50,7 @@
     /* 卡片美化 */
     .card {
         border-radius: 12px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
         overflow: hidden;
         border: 1px solid #e8e8e8;
     }
@@ -64,7 +64,7 @@
         font-weight: 600;
     }
 
-    .card > *:not(h2) {
+    .card>*:not(h2) {
         padding: 1.5rem;
     }
 
@@ -119,19 +119,23 @@
     <div id="topology-network" style="height: 600px; background: #f8f9fa; border-radius: 8px;"></div>
     <div style="padding: 1rem; background: #fff; border-top: 1px solid #e8e8e8;">
         <span style="margin-right: 20px;">
-            <span style="display: inline-block; width: 16px; height: 16px; background: #1890ff; border-radius: 50%; margin-right: 5px;"></span>
+            <span
+                style="display: inline-block; width: 16px; height: 16px; background: #1890ff; border-radius: 50%; margin-right: 5px;"></span>
             核心设备
         </span>
         <span style="margin-right: 20px;">
-            <span style="display: inline-block; width: 16px; height: 16px; background: #52c41a; border-radius: 50%; margin-right: 5px;"></span>
+            <span
+                style="display: inline-block; width: 16px; height: 16px; background: #52c41a; border-radius: 50%; margin-right: 5px;"></span>
             汇聚/接入
         </span>
         <span style="margin-right: 20px;">
-            <span style="display: inline-block; width: 16px; height: 16px; background: #fa8c16; border-radius: 50%; margin-right: 5px;"></span>
+            <span
+                style="display: inline-block; width: 16px; height: 16px; background: #fa8c16; border-radius: 50%; margin-right: 5px;"></span>
             防火墙
         </span>
         <span>
-            <span style="display: inline-block; width: 16px; height: 16px; background: #d9d9d9; border-radius: 50%; margin-right: 5px;"></span>
+            <span
+                style="display: inline-block; width: 16px; height: 16px; background: #d9d9d9; border-radius: 50%; margin-right: 5px;"></span>
             未知设备
         </span>
     </div>
@@ -223,15 +227,16 @@
 
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.6/dist/vis-network.min.js"></script>
 <script>
-// 构建vis.js网络拓扑图
-(function() {
-    const links = {{ links | tojson }};
+    // 构建vis.js网络拓扑图
+    (function () {
+        const links = {{ links | tojson
+    }};
     const centerDevice = "{{ device.name }}";
-    
+
     // 提取节点
     const nodesMap = new Map();
     const edgesArray = [];
-    
+
     // 添加中心设备
     nodesMap.set(centerDevice, {
         id: centerDevice,
@@ -240,11 +245,11 @@
         value: 30,
         title: `核心设备: ${centerDevice}`
     });
-    
+
     // 处理链路
     links.forEach((link, idx) => {
         const dst = link.dst_device;
-        
+
         // 确定设备类型
         let group = 'normal';
         if (dst.includes('FW') || dst.includes('USG') || dst.includes('firewall')) {
@@ -252,7 +257,7 @@
         } else if (dst === 'Unknown' || /^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/i.test(dst)) {
             group = 'unknown';
         }
-        
+
         // 添加目标节点
         if (!nodesMap.has(dst)) {
             nodesMap.set(dst, {
@@ -263,16 +268,16 @@
                 title: `设备: ${dst}\n接口: ${link.dst_if || 'N/A'}`
             });
         }
-        
+
         // 简化接口名
         const simplifyIf = (ifname) => {
             if (!ifname) return '';
             return ifname.replace('GigabitEthernet', 'Gi')
-                        .replace('TenGigabitEthernet', '10Gi')
-                        .replace('Ten-GigabitEthernet', '10Gi')
-                        .replace('XGigabitEthernet', 'XGi');
+                .replace('TenGigabitEthernet', '10Gi')
+                .replace('Ten-GigabitEthernet', '10Gi')
+                .replace('XGigabitEthernet', 'XGi');
         };
-        
+
         // 添加边
         edgesArray.push({
             id: `edge-${idx}`,
@@ -285,11 +290,11 @@
             color: link.link_type === 'trunk' ? '#52c41a' : '#69c0ff'
         });
     });
-    
+
     // 转换为数组
     const nodes = new vis.DataSet(Array.from(nodesMap.values()));
     const edges = new vis.DataSet(edgesArray);
-    
+
     // 创建网络
     const container = document.getElementById('topology-network');
     const data = { nodes, edges };
@@ -371,11 +376,11 @@
             zoomView: true
         }
     };
-    
+
     const network = new vis.Network(container, data, options);
-    
+
     // 点击节点跳转
-    network.on('click', function(params) {
+    network.on('click', function (params) {
         if (params.nodes.length > 0) {
             const nodeId = params.nodes[0];
             if (nodeId !== centerDevice) {
@@ -383,11 +388,11 @@
             }
         }
     });
-})();
+}) ();
 </script>
 {% endblock %}
-        </tbody>
-    </table>
+</tbody>
+</table>
 </div>
 {% endif %}
 {% endblock %}
