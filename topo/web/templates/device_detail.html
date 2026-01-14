@@ -227,12 +227,11 @@
 
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.6/dist/vis-network.min.js"></script>
 <script>
-    // 构建vis.js网络拓扑图
-    (function () {
-        const links = {{ links | tojson
-    }};
+// 构建vis.js网络拓扑图
+(function() {
+    const links = {{ links | tojson }};
     const centerDevice = "{{ device.name }}";
-
+    
     // 提取节点
     const nodesMap = new Map();
     const edgesArray = [];
@@ -388,22 +387,6 @@
             }
         }
     });
-}) ();
-</script>
-{% endblock %}
-</tbody>
-</table>
-</div>
-{% endif %}
-{% endblock %}
-
-{% block extra_js %}
-<script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({
-        startOnLoad: true,
-        theme: 'default',
-        flowchart: { useMaxWidth: true }
-    });
+})();
 </script>
 {% endblock %}
