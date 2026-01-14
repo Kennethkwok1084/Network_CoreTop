@@ -43,14 +43,16 @@ def _init_databases(db_path: str):
     data_dir = Path('data')
     data_dir.mkdir(exist_ok=True)
     
-    # 初始化拓扑数据库
-    topo_db_path = db_path if 'topology' in db_path or db_path == 'topo.db' else 'data/topology.db'
+    # 初始化拓扑数据库（使用传入的路径）
     try:
-        topo_db = Database(topo_db_path)
+        # 确保拓扑数据库的父目录存在
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        topo_db = Database(db_path)
         topo_db.connect()
         topo_db.init_schema()
         topo_db.close()
-        logging.info(f"✓ 拓扑数据库已初始化: {topo_db_path}")
+        logging.info(f"✓ 拓扑数据库已初始化: {db_path}")
     except Exception as e:
         logging.warning(f"拓扑数据库初始化警告: {e}")
     
@@ -145,7 +147,7 @@ class LogBroadcaster:
 log_broadcaster = LogBroadcaster()
 
 
-def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"):
+def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="data/raw"):
     """创建 Flask 应用"""
     # 强制从环境变量读取 SECRET_KEY，禁用硬编码默认值
     secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-for-testing-only')
@@ -786,7 +788,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='启动 Web 服务器')
-    parser.add_argument('-d', '--database', default='topo.db', help='数据库路径')
+    parser.add_argument('-d', '--database', default='data/topology.db', help='数据库路径')
     parser.add_argument('-p', '--port', type=int, default=5000, help='端口号')
     parser.add_argument('--host', default='127.0.0.1', help='监听地址')
     parser.add_argument('--debug', action='store_true', help='调试模式')
