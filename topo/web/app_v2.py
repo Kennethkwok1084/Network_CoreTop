@@ -35,46 +35,36 @@ from topo.management.task_scheduler import TaskScheduler
 
 # ========== 数据库初始化 ==========
 def _init_databases(db_path: str):
-    """自动初始化拓扑数据库和管理数据库"""
+    """自动初始化数据库（所有表放在一个数据库中）"""
     import sqlite3
     from pathlib import Path
     
-    # 确保 data 目录存在
-    data_dir = Path('data')
-    data_dir.mkdir(exist_ok=True)
+    # 确保数据库的父目录存在
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     
-    # 初始化拓扑数据库（使用传入的路径）
+    # 初始化拓扑数据库和管理表（都在同一个数据库中）
     try:
-        # 确保拓扑数据库的父目录存在
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        
+        # 1. 创建拓扑表
         topo_db = Database(db_path)
         topo_db.connect()
         topo_db.init_schema()
         topo_db.close()
-        logging.info(f"✓ 拓扑数据库已初始化: {db_path}")
-    except Exception as e:
-        logging.warning(f"拓扑数据库初始化警告: {e}")
-    
-    # 初始化管理数据库
-    mgmt_db_path = 'data/management.db'
-    try:
-        # 确保父目录存在
-        Path(mgmt_db_path).parent.mkdir(parents=True, exist_ok=True)
         
-        conn = sqlite3.connect(mgmt_db_path)
+        # 2. 创建管理表（在同一个数据库中）
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 执行所有表的创建
+        # 执行所有管理表的创建
         for sql in [USERS_TABLE, MANAGED_DEVICES_TABLE, COLLECTION_TASKS_TABLE,
                     OPERATION_LOGS_TABLE, UPLOAD_FILES_TABLE, SYSTEM_CONFIG_TABLE]:
             cursor.execute(sql)
         
         conn.commit()
         conn.close()
-        logging.info(f"✓ 管理数据库已初始化: {mgmt_db_path}")
+        
+        logging.info(f"✓ 数据库已初始化（包含拓扑表和管理表）: {db_path}")
     except Exception as e:
-        logging.warning(f"管理数据库初始化警告: {e}")
+        logging.warning(f"数据库初始化警告: {e}")
 
 
 # ========== CSRF 保护工具函数 ==========

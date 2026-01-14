@@ -17,33 +17,30 @@ from topo.db.management_schema import (
 )
 
 def init_databases():
-    """初始化所有数据库"""
+    """初始化数据库（所有表在一个数据库中）"""
     # 确保 data 目录存在
     data_dir = Path('data')
     data_dir.mkdir(exist_ok=True)
     print(f"✓ 数据目录: {data_dir.absolute()}")
     
-    # 初始化拓扑数据库
-    topo_db_path = 'data/topology.db'
-    print(f"\n初始化拓扑数据库: {topo_db_path}")
+    # 初始化数据库（拓扑表+管理表）
+    db_path = 'data/topology.db'
+    print(f"\n初始化数据库: {db_path}")
+    
     try:
-        topo_db = Database(topo_db_path)
+        # 1. 创建拓扑表
+        print(f"  创建拓扑表...")
+        topo_db = Database(db_path)
         topo_db.connect()
         topo_db.init_schema()
         topo_db.close()
-        print(f"✓ 拓扑数据库已创建: {Path(topo_db_path).absolute()}")
-    except Exception as e:
-        print(f"✗ 拓扑数据库初始化失败: {e}")
-        return False
-    
-    # 初始化管理数据库
-    mgmt_db_path = 'data/management.db'
-    print(f"\n初始化管理数据库: {mgmt_db_path}")
-    try:
-        conn = sqlite3.connect(mgmt_db_path)
+        print(f"  ✓ 拓扑表已创建")
+        
+        # 2. 创建管理表（在同一个数据库中）
+        print(f"  创建管理表...")
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # 执行所有表的创建
         tables = [
             ('users', USERS_TABLE),
             ('managed_devices', MANAGED_DEVICES_TABLE),
@@ -55,28 +52,36 @@ def init_databases():
         
         for table_name, sql in tables:
             cursor.execute(sql)
-            print(f"  ✓ 表 {table_name} 已创建")
+            print(f"    ✓ 表 {table_name}")
         
         conn.commit()
         conn.close()
-        print(f"✓ 管理数据库已创建: {Path(mgmt_db_path).absolute()}")
+        
+        print(f"\n✓ 数据库已创建: {Path(db_path).absolute()}")
+        
+        # 验证
+        db_exists = Path(db_path).exists()
+        if db_exists:
+            size = Path(db_path).stat().st_size
+            print(f"  大小: {size} 字节")
+            
+            # 列出所有表
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            tables = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            print(f"  表数量: {len(tables)}")
+            print(f"\n✓ 所有数据库表初始化成功！")
+            return True
+        else:
+            print(f"\n✗ 数据库未创建")
+            return False
+            
     except Exception as e:
-        print(f"✗ 管理数据库初始化失败: {e}")
-        return False
-    
-    # 验证
-    print(f"\n数据库验证:")
-    topo_exists = Path(topo_db_path).exists()
-    mgmt_exists = Path(mgmt_db_path).exists()
-    
-    print(f"  拓扑数据库: {'✓' if topo_exists else '✗'} {Path(topo_db_path).absolute()}")
-    print(f"  管理数据库: {'✓' if mgmt_exists else '✗'} {Path(mgmt_db_path).absolute()}")
-    
-    if topo_exists and mgmt_exists:
-        print(f"\n✓ 所有数据库初始化成功！")
-        return True
-    else:
-        print(f"\n✗ 部分数据库未创建")
+        print(f"✗ 数据库初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 if __name__ == '__main__':
