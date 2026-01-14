@@ -333,22 +333,47 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
     @login_required
     def device_detail(device_name):
         """设备详情页"""
+        logger.info(f"[设备详情] 访问设备: {device_name}")
+        
         with TopoDAO(app.config['DATABASE']) as dao:
             device = dao.devices.get_by_name(device_name)
             if not device:
+                logger.warning(f"[设备详情] 设备不存在: {device_name}")
                 flash('设备不存在', 'error')
                 return redirect(url_for('index'))
             
             # 获取链路信息
             links = dao.links.get_by_device(device['name'])
+            logger.info(f"[设备详情] 设备 {device_name} 有 {len(links)} 条链路")
             
             # 获取异常信息
             anomalies = dao.anomalies.get_by_device(device['id'])
+            
+            # 生成Mermaid代码
+            exporter = MermaidExporter(dao)
+            mermaid_code = exporter.export_device_topology(
+                device_name,
+                max_phy_links=50
+            )
+            
+            # 输出Mermaid代码（前20行）用于调试
+            lines = mermaid_code.split('\n')
+            logger.info(f"[设备详情] 生成Mermaid代码 {len(lines)} 行")
+            logger.info(f"[设备详情] 代码预览（前20行）:")
+            for i, line in enumerate(lines[:20], 1):
+                logger.info(f"  {i:3}: {line}")
+            
+            # 检查语法问题
+            if '|]' in mermaid_code:
+                logger.error(f"[设备详情] ⚠️  发现语法错误: 包含 |]")
+            if '```mermaid' not in mermaid_code:
+                logger.error(f"[设备详情] ⚠️  Mermaid代码块格式错误")
         
         return render_template('device_detail.html', 
                              device=device, 
                              links=links, 
-                             anomalies=anomalies)
+                             anomalies=anomalies,
+                             mermaid_code=mermaid_code)
     
     @app.route('/anomalies')
     @login_required
