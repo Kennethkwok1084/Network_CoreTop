@@ -272,8 +272,8 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
             
             # 为每个设备添加链路和异常数量
             for device in devices:
-                links = dao.links.get_by_device(device['device_name'])
-                anomalies = dao.anomalies.list_by_device(device['id'])
+                links = dao.links.get_by_device(device['name'])
+                anomalies = dao.anomalies.get_by_device(device['id'])
                 device['link_count'] = len(links)
                 device['anomaly_count'] = len(anomalies)
                 stats['total_links'] += len(links)
@@ -292,10 +292,10 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
                 return redirect(url_for('index'))
             
             # 获取链路信息
-            links = dao.links.get_by_device(device['device_name'])
+            links = dao.links.get_by_device(device['name'])
             
             # 获取异常信息
-            anomalies = dao.anomalies.list_by_device(device['id'])
+            anomalies = dao.anomalies.get_by_device(device['id'])
         
         return render_template('device_detail.html', 
                              device=device, 
@@ -312,7 +312,7 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
             # 关联设备名称
             for anomaly in all_anomalies:
                 device = dao.devices.get(anomaly['device_id'])
-                anomaly['device_name'] = device['device_name'] if device else 'Unknown'
+                anomaly['device_name'] = device['name'] if device else 'Unknown'
         
         return render_template('anomalies.html', anomalies=all_anomalies)
     
