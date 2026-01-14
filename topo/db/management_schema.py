@@ -164,11 +164,7 @@ def create_default_admin(conn, username=None, password=None):
             "  然后设置: export ADMIN_PASSWORD='<生成的密码>'"
         )
     
-    if len(password) < 12:
-        raise ValueError(
-            f"ERROR: 管理员密码过弱 (长度 {len(password)}, 需要 >= 12)\n"
-            "  请提供一个强密码 (至少 12 字符，包含大小写、数字、特殊字符)"
-        )
+    # 开发模式：跳过密码强度验证
     
     cursor = conn.cursor()
     

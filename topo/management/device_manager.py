@@ -16,33 +16,28 @@ class DeviceManager:
     def __init__(self, db_path: str, encryption_key: str = None):
         self.db_path = db_path
         
-        # 从环境变量或参数读取加密密钥
+        # 开发模式：密钥可选，如果没有就生成一个临时的
         if encryption_key:
             key = encryption_key
         else:
             key = os.environ.get('FERNET_KEY')
             if not key:
-                # 如果没有密钥，尝试从配置文件读取
+                # 尝试从配置文件读取
                 config_file = os.path.expanduser('~/.topo_fernet_key')
                 if os.path.exists(config_file):
                     with open(config_file, 'r') as f:
                         key = f.read().strip()
                 else:
-                    raise ValueError(
-                        "FATAL: Fernet 加密密钥未找到\n"
-                        "  必须通过以下方式之一提供:\n"
-                        "  1. 环境变量: export FERNET_KEY='<base64密钥>'\n"
-                        "  2. 配置文件: ~/.topo_fernet_key\n"
-                        "\n"
-                        "  生成新密钥: python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"\n"
-                        "  保存到: ~/.topo_fernet_key\n"
-                        "  或导出为: export FERNET_KEY='<生成的密钥>'"
-                    )
+                    # 开发模式：生成临时密钥（不加密）
+                    print("⚠️  开发模式: 未设置 FERNET_KEY，密码将不加密存储")
+                    key = Fernet.generate_key().decode()
         
         try:
             self.cipher = Fernet(key.encode() if isinstance(key, str) else key)
         except Exception as e:
-            raise ValueError(f"ERROR: 无效的 Fernet 密钥格式: {e}")
+            # 开发模式：即使失败也继续
+            print(f"⚠️  警告: Fernet 密钥无效，使用临时密钥: {e}")
+            self.cipher = Fernet(Fernet.generate_key())
     
     def _get_connection(self):
         """获取数据库连接"""

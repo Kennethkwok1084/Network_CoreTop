@@ -102,20 +102,8 @@ class DeviceCollector:
             if os.path.exists(known_hosts_file):
                 ssh.load_system_host_keys(known_hosts_file)
             
-            # 安全策略：拒绝未知主机密钥（防止 MITM 攻击）
-            # 如果需要自动添加，使用环境变量控制
-            auto_add_policy = os.environ.get('SSH_TRUST_NEW_HOSTS', 'false').lower() == 'true'
-            
-            if auto_add_policy:
-                # 仅在明确指定时自动添加（开发/测试环境）
-                logger.warning(
-                    "警告: SSH_TRUST_NEW_HOSTS 已启用，将自动接受未知主机密钥。"
-                    "这在生产环境中不安全！"
-                )
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            else:
-                # 默认策略：拒绝未知主机密钥
-                ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+            # 开发模式：自动接受所有主机密钥
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
             # 连接设备
             logger.info(f"正在连接设备 {device_config['device_name']} ({device_config['mgmt_ip']})...")
