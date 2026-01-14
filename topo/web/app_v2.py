@@ -302,8 +302,11 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
     @login_required
     def index():
         """设备列表页（拓扑设备）"""
+        logger.info(f"[主页] 用户 {session.get('username')} 访问主页")
+        
         with TopoDAO(app.config['DATABASE']) as dao:
             devices = dao.devices.list_all()
+            logger.info(f"[主页] 数据库中共有 {len(devices)} 个设备")
             
             # 统计信息（简化版）
             stats = {
@@ -320,6 +323,9 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
                 device['anomaly_count'] = len(anomalies)
                 stats['total_links'] += len(links)
                 stats['total_anomalies'] += len(anomalies)
+                logger.info(f"[主页] 设备 {device['name']}: {len(links)} 条链路, {len(anomalies)} 个异常")
+        
+        logger.info(f"[主页] 总计: {stats['total_devices']} 设备, {stats['total_links']} 链路, {stats['total_anomalies']} 异常")
         
         return render_template('index.html', devices=devices, stats=stats)
     
@@ -626,7 +632,7 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO upload_files 
-                    (filename, original_filename, file_path, file_size, file_hash, uploaded_by, upload_status)
+                    (filename, original_filename, file_path, file_size, file_hash, uploaded_by, import_status)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     hash_filename, 
@@ -635,7 +641,7 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
                     file_size,
                     file_hash,
                     session['user_id'],
-                    'completed'
+                    'pending'
                 ))
                 conn.commit()
                 upload_id = cursor.lastrowid
@@ -647,10 +653,51 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
                 # 自动导入
                 if request.form.get('auto_import') == 'on':
                     try:
-                        # TODO: 实现导入逻辑
-                        # parse_log_file(str(filepath), app.config['DATABASE'])
-                        flash(f'文件已上传，请使用 CLI 导入', 'info')
+                        # 更新导入状态为 processing
+                        conn = sqlite3.connect(app.config['DATABASE'])
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE upload_files SET import_status = 'processing' WHERE id = ?", (upload_id,))
+                        conn.commit()
+                        conn.close()
+                        
+                        # 导入日志文件
+                        from topo.parser.__main__ import LogParser
+                        device_name = request.form.get('device_name', Path(original_filename).stem.split('_')[0])
+                        
+                        parser = LogParser(app.config['DATABASE'])
+                        result = parser.import_log_file(str(filepath), device_name=device_name)
+                        
+                        # 更新导入结果
+                        conn = sqlite3.connect(app.config['DATABASE'])
+                        cursor = conn.cursor()
+                        
+                        if result.get('status') == 'success':
+                            import json
+                            cursor.execute("""
+                                UPDATE upload_files 
+                                SET import_status = 'success', import_result = ? 
+                                WHERE id = ?
+                            """, (json.dumps(result), upload_id))
+                            flash(f'文件已导入：{result.get("lldp_count", 0)} 条LLDP记录，{result.get("link_count", 0)} 条链路', 'success')
+                        else:
+                            cursor.execute("""
+                                UPDATE upload_files 
+                                SET import_status = 'failed', import_result = ? 
+                                WHERE id = ?
+                            """, (result.get('reason', '导入失败'), upload_id))
+                            flash(f'导入失败: {result.get("reason", "未知错误")}', 'error')
+                        
+                        conn.commit()
+                        conn.close()
+                        
                     except Exception as e:
+                        # 更新失败状态
+                        conn = sqlite3.connect(app.config['DATABASE'])
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE upload_files SET import_status = 'failed', import_result = ? WHERE id = ?", 
+                                     (str(e), upload_id))
+                        conn.commit()
+                        conn.close()
                         flash(f'导入失败: {str(e)}', 'error')
                 
                 return redirect(url_for('upload_file'))
@@ -690,17 +737,38 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
     @login_required
     def api_device_topology(device_name):
         """API: 获取设备拓扑（JSON）"""
+        logger.info(f"[拓扑API] 请求设备: {device_name}")
+        
         with TopoDAO(app.config['DATABASE']) as dao:
             device = dao.devices.get_by_name(device_name)
             if not device:
+                logger.warning(f"[拓扑API] 设备不存在: {device_name}")
                 return jsonify({'error': '设备不存在'}), 404
             
+            # 查询链路统计
+            links = dao.links.get_by_device(device_name)
+            logger.info(f"[拓扑API] 设备 {device_name} 共有 {len(links)} 条链路")
+            
+            # 生成Mermaid代码
             exporter = MermaidExporter(dao)
             mermaid_code = exporter.export_device_topology(
                 device_name,
                 output_file=None,
                 max_phy_links=50
             )
+            
+            # 输出生成的代码（前20行）
+            lines = mermaid_code.split('\n')
+            logger.info(f"[拓扑API] 生成Mermaid代码 {len(lines)} 行")
+            logger.info(f"[拓扑API] 代码预览（前20行）:")
+            for i, line in enumerate(lines[:20], 1):
+                logger.info(f"  {i:3}: {line}")
+            
+            # 检查语法问题
+            if '|]' in mermaid_code:
+                logger.error(f"[拓扑API] ⚠️  发现语法错误: 包含 |]")
+            if not mermaid_code.strip().startswith('```mermaid'):
+                logger.error(f"[拓扑API] ⚠️  Mermaid代码块格式错误")
             
             return jsonify({'mermaid': mermaid_code})
     
