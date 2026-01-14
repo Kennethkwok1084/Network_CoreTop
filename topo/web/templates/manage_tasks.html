@@ -71,6 +71,8 @@
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="btn btn-sm" style="background: #52c41a; color: white;">执行</button>
                     </form>
+                    {% elif task.status == 'running' %}
+                    <button class="btn btn-sm" onclick="showLogs({{ task.id }})" style="background: #1890ff; color: white;">📡 查看日志</button>
                     {% elif task.status == 'failed' %}
                     <span style="color: #999; font-size: 12px;" title="{{ task.error_message }}">⚠️ 查看错误</span>
                     {% endif %}
@@ -97,4 +99,96 @@
         <li><strong>日志文件：</strong>采集成功后会保存到 data/raw/ 目录，可直接导入解析</li>
     </ul>
 </div>
+
+<!-- 实时日志弹窗 -->
+<div id="logModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; max-width: 900px; max-height: 80vh; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="padding: 20px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; color: #2c3e50;">📡 实时采集日志</h3>
+            <button onclick="closeLogs()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
+        </div>
+        <div id="logContent" style="padding: 20px; max-height: calc(80vh - 100px); overflow-y: auto; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6;">
+            <div style="color: #4ec9b0;">正在连接日志流...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+let eventSource = null;
+
+function showLogs(taskId) {
+    const modal = document.getElementById('logModal');
+    const logContent = document.getElementById('logContent');
+    modal.style.display = 'block';
+    logContent.innerHTML = '<div style="color: #4ec9b0;">[系统] 正在连接到任务 #' + taskId + ' 的日志流...</div>';
+    
+    // 关闭之前的连接
+    if (eventSource) {
+        eventSource.close();
+    }
+    
+    // 建立 SSE 连接
+    eventSource = new EventSource('/manage/tasks/' + taskId + '/logs');
+    
+    eventSource.onmessage = function(event) {
+        const log = JSON.parse(event.data);
+        const timestamp = log.timestamp;
+        const message = log.message;
+        
+        let color = '#d4d4d4';  // 默认白色
+        let icon = '•';
+        
+        if (log.type === 'connected') {
+            color = '#4ec9b0';  // 青色
+            icon = '✓';
+        } else if (log.type === 'info') {
+            color = '#9cdcfe';  // 浅蓝
+            icon = 'ℹ';
+        } else if (log.type === 'success') {
+            color = '#4ec9b0';  // 绿色
+            icon = '✓';
+        } else if (log.type === 'error') {
+            color = '#f48771';  // 红色
+            icon = '✗';
+        } else if (log.type === 'command') {
+            color = '#dcdcaa';  // 黄色
+            icon = '►';
+        } else if (log.type === 'output') {
+            color = '#ce9178';  // 橙色
+            icon = '◄';
+        }
+        
+        const logLine = '<div style="margin-bottom: 4px;"><span style="color: #858585;">[' + timestamp + ']</span> <span style="color: ' + color + ';">' + icon + ' ' + escapeHtml(message) + '</span></div>';
+        logContent.innerHTML += logLine;
+        logContent.scrollTop = logContent.scrollHeight;
+    };
+    
+    eventSource.onerror = function() {
+        logContent.innerHTML += '<div style="color: #f48771; margin-top: 10px;">[系统] 连接已断开</div>';
+        eventSource.close();
+        eventSource = null;
+    };
+}
+
+function closeLogs() {
+    document.getElementById('logModal').style.display = 'none';
+    if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 点击模态框外部关闭
+document.getElementById('logModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeLogs();
+    }
+});
+</script>
 {% endblock %}

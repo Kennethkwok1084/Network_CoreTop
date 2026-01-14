@@ -3,7 +3,7 @@
 Flask Web 应用 - 完整管理系统
 包含用户认证、设备管理、任务调度、文件上传等功能
 """
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash, Response, stream_with_context
 from functools import wraps
 from pathlib import Path
 import json
@@ -13,6 +13,8 @@ import hmac
 import hashlib
 import secrets
 import logging
+import queue
+import threading
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 
@@ -43,6 +45,57 @@ def verify_csrf_token(token: str, session_secret: str) -> bool:
         hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(token, expected)
+
+
+# ========== 实时日志队列 ==========
+class LogBroadcaster:
+    """日志广播器 - 用于实时推送采集日志到前端"""
+    def __init__(self):
+        self.queues = {}  # {task_id: [queue1, queue2, ...]}
+        self.lock = threading.Lock()
+    
+    def add_listener(self, task_id: int):
+        """添加监听器"""
+        q = queue.Queue(maxsize=100)
+        with self.lock:
+            if task_id not in self.queues:
+                self.queues[task_id] = []
+            self.queues[task_id].append(q)
+        return q
+    
+    def remove_listener(self, task_id: int, q: queue.Queue):
+        """移除监听器"""
+        with self.lock:
+            if task_id in self.queues:
+                try:
+                    self.queues[task_id].remove(q)
+                    if not self.queues[task_id]:
+                        del self.queues[task_id]
+                except ValueError:
+                    pass
+    
+    def broadcast(self, task_id: int, log_type: str, message: str):
+        """广播日志消息"""
+        with self.lock:
+            if task_id in self.queues:
+                log_data = {
+                    'type': log_type,  # info, success, error, command, output
+                    'message': message,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                for q in self.queues[task_id]:
+                    try:
+                        q.put_nowait(log_data)
+                    except queue.Full:
+                        # 队列满了，移除最旧的消息
+                        try:
+                            q.get_nowait()
+                            q.put_nowait(log_data)
+                        except:
+                            pass
+
+# 全局日志广播器
+log_broadcaster = LogBroadcaster()
 
 
 def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"):
@@ -412,19 +465,43 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     @login_required
     @csrf_protect
     def execute_task(task_id):
-        """执行采集任务"""
+        """执行采集任务（异步）"""
         scheduler = TaskScheduler(app.config['DATABASE'])
         collector = DeviceCollector()
         output_dir = Path(app.config['LOG_FOLDER'])
         
-        success = scheduler.execute_task(task_id, collector, output_dir)
+        # 在后台线程执行任务，避免阻塞
+        def run_task():
+            scheduler.execute_task(task_id, collector, output_dir, log_callback=lambda log_type, msg: log_broadcaster.broadcast(task_id, log_type, msg))
         
-        if success:
-            flash(f'任务 #{task_id} 执行成功', 'success')
-        else:
-            flash(f'任务 #{task_id} 执行失败', 'error')
+        thread = threading.Thread(target=run_task, daemon=True)
+        thread.start()
         
+        flash(f'任务 #{task_id} 已开始执行，请查看实时日志', 'success')
         return redirect(url_for('manage_tasks'))
+    
+    @app.route('/manage/tasks/<int:task_id>/logs')
+    @login_required
+    def task_logs_stream(task_id):
+        """SSE 实时日志流"""
+        def generate():
+            q = log_broadcaster.add_listener(task_id)
+            try:
+                # 发送初始连接消息
+                yield f"data: {json.dumps({'type': 'connected', 'message': '已连接到日志流', 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, ensure_ascii=False)}\n\n"
+                
+                # 持续推送日志
+                while True:
+                    try:
+                        log_data = q.get(timeout=30)  # 30秒超时
+                        yield f"data: {json.dumps(log_data, ensure_ascii=False)}\n\n"
+                    except queue.Empty:
+                        # 发送心跳保持连接
+                        yield f": heartbeat\n\n"
+            finally:
+                log_broadcaster.remove_listener(task_id, q)
+        
+        return Response(stream_with_context(generate()), mimetype='text/event-stream')
     
     # ========== 文件上传路由 ==========
     @app.route('/upload', methods=['GET', 'POST'])
@@ -651,9 +728,10 @@ def main():
     
     app = create_app(args.database)
     
+    admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
     print(f"🚀 Web 服务器启动: http://{args.host}:{args.port}")
     print(f"📁 数据库: {args.database}")
-    print(f"👤 默认管理员: admin / admin123")
+    print(f"👤 管理员账号: {admin_username} (密码在初始化时设置)")
     print()
     
     app.run(host=args.host, port=args.port, debug=args.debug)

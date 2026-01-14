@@ -6,8 +6,8 @@
 
 ### 📡 自动化采集
 - **SSH 自动采集**：通过 Paramiko 自动连接交换机，执行命令并保存日志
-- **多厂商支持**：华为、思科、H3C、锐捷等主流厂商
-- **定时任务**：可配置自动定期采集，无需人工干预
+- **多厂商采集**：采集命令集覆盖华为/思科/H3C，解析当前以华为 `display` 输出为主
+- **定时任务**：可配置自动定期采集，需要运行调度器进程
 - **批量管理**：支持管理多台设备，批量执行采集任务
 
 ### 🌐 Web 管理系统
@@ -19,14 +19,14 @@
 
 ### 🔍 智能分析
 - **日志解析**：自动解析 LLDP、Trunk、接口描述、STP 等信息
-- **异常检测**：识别环路风险、Trunk 不一致、LLDP 邻居抖动等 4 类异常
+- **异常检测**：识别环路风险、Trunk 不一致、异常邻居名等（邻居抖动为可选检测）
 - **接口标准化**：自动规范化 `GE/XGE/Eth-Trunk` 格式
 - **哈希去重**：避免重复导入，支持增量更新
 
 ### 📊 数据导出
 - **多格式支持**：Mermaid (.mmd)、PDF (Graphviz)、Markdown
-- **API 接口**：RESTful API 支持程序化访问
-- **批量导出**：支持批量导出所有设备拓扑
+- **API 接口**：提供拓扑查询、导出、链路标记等接口
+- **批量导出**：当前按设备导出，可按需扩展
 
 ## 📦 快速开始
 
@@ -36,26 +36,36 @@
 # 1. 安装依赖
 pip install -r requirements.txt
 
-# 2. 初始化数据库
+# 2. 设置必要环境变量
+export SECRET_KEY="$(python3 -c "import secrets; print(secrets.token_hex(32))")"
+export ADMIN_PASSWORD="Your-Strong-Password"
+# （可选）管理员用户名
+export ADMIN_USERNAME="admin"
+# （可选）设备密码加密密钥
+export FERNET_KEY="$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")"
+
+# 3. 初始化数据库
 python init_db_with_management.py
 
-# 3. 启动 Web 服务器
+# 4. 启动 Web 服务器
 ./start_web_management.sh
 # 或
 python -m topo.web.app_v2 --port 5000
 
-# 4. 访问浏览器
+# 5. 访问浏览器
 http://127.0.0.1:5000
 
-# 5. 登录（首次）
-用户名: admin
-密码: admin123
+# 6. 登录（首次）
+用户名: ${ADMIN_USERNAME:-admin}
+密码: 使用 ADMIN_PASSWORD 环境变量设置的值
 ```
+
+说明：`FERNET_KEY` 用于加密设备密码，未设置时将无法保存设备凭证。
 
 **功能说明：**
 - ✅ 设备管理：添加交换机 IP、用户名、密码
 - ✅ 自动采集：SSH 连接设备，执行命令，保存日志
-- ✅ 任务调度：创建采集任务，查看执行历史
+- ✅ 任务调度：创建采集任务，查看执行历史（自动采集需运行调度器）
 - ✅ 文件上传：手动上传日志文件并导入
 - ✅ 拓扑可视化：查看网络拓扑图和异常
 - ✅ 用户管理：多用户、角色权限控制
@@ -70,7 +80,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 2. 安装依赖
-pip install click
+pip install -r requirements.txt
 
 # （可选）安装 PDF 导出支持
 sudo apt install graphviz  # Linux (Debian/Ubuntu)
@@ -143,7 +153,9 @@ python -m topo import-log data/raw/Core_CSS_20231228.log
 ./topo_cli export Core --format markdown -o outputs/core.md
 
 # 导出为 PDF（需要安装 Graphviz 或 Mermaid CLI）
-./topo_cli export Core --format pdf -o outputs/core.pdf
+./topo_cli export Core --format pdf-graphviz -o outputs/core.pdf
+# 或
+./topo_cli export Core --format pdf-mermaid -o outputs/core.pdf
 ```
 
 ### 6. 启动 Web 界面（可选）
@@ -167,16 +179,22 @@ Web 界面功能：
 - **设备详情**：可视化拓扑图（Mermaid 渲染）、链路列表、异常列表
 - **异常检测**：过滤查看不同类型的网络异常
 - **导出功能**：下载 Mermaid/DOT 格式拓扑文件
-- **API 接口**：RESTful API 支持程序化访问
+- **API 接口**：提供拓扑查询、导出、检测等接口
 
 ## 📚 使用示例
 
+```bash
 # 导出为 PDF（需要 Graphviz）
 ./topo_cli export Core --format pdf-graphviz -o outputs/core.pdf
 
 # 限制链路数量（防止图过大）
 ./topo_cli export Core --max-links 30
+
+# 运行自动采集调度器
+./topo_cli schedule --interval 300
 ```
+
+提示：需在设备管理中启用“自动采集”并设置间隔，调度器才会创建任务。
 
 ## 📋 CLI 命令参考
 
@@ -198,6 +216,9 @@ Web 界面功能：
 
 # 标记链路可信度
 ./topo_cli mark <device> <src_if> <dst_device> <dst_if> trusted|suspect|ignore
+
+# 运行自动采集调度器
+./topo_cli schedule --interval 300
 
 # 查看导入历史
 ./topo_cli history

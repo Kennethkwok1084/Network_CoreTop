@@ -49,13 +49,14 @@ class LogParser:
             'stp_blocked': 0
         }
     
-    def import_log_file(self, file_path: str, device_name: str = None) -> Dict[str, Any]:
+    def import_log_file(self, file_path: str, device_name: str = None, force: bool = False) -> Dict[str, Any]:
         """
         导入单个日志文件
         
         Args:
             file_path: 日志文件路径
             device_name: 设备名称（可选，如不提供则从文件名提取）
+            force: 是否强制重新导入（忽略哈希检查）
         
         Returns:
             导入结果统计
@@ -69,9 +70,11 @@ class LogParser:
         with TopoDAO(self.db_path) as dao:
             # 检查是否已导入
             if dao.imports.check_hash_exists(file_hash):
-                logger.warning(f"文件已导入过（hash: {file_hash[:16]}...），跳过")
-                self.stats['files_skipped'] += 1
-                return {'status': 'skipped', 'reason': 'duplicate'}
+                if not force:
+                    logger.warning(f"文件已导入过（hash: {file_hash[:16]}...），跳过")
+                    self.stats['files_skipped'] += 1
+                    return {'status': 'skipped', 'reason': 'duplicate', 'hash': file_hash}
+                logger.warning(f"文件已导入过（hash: {file_hash[:16]}...），强制重新导入")
             
             # 提取设备名
             if not device_name:
@@ -97,10 +100,19 @@ class LogParser:
             # 解析各个命令块
             collected_at = datetime.now().isoformat()
             
+            import_stats = {
+                'lldp_count': 0,
+                'trunk_count': 0,
+                'interface_count': 0,
+                'stp_blocked_count': 0,
+                'link_count': 0,
+            }
+
             for command, output in blocks:
                 self._parse_command_block(
                     dao, device_id, device_name, 
-                    command, output, file_path, collected_at
+                    command, output, file_path, collected_at,
+                    import_stats=import_stats
                 )
             
             # 记录导入任务
@@ -113,13 +125,16 @@ class LogParser:
             return {
                 'status': 'success',
                 'device_name': device_name,
+                'hash': file_hash,
                 'file_hash': file_hash,
-                'blocks': len(blocks)
+                'blocks': len(blocks),
+                **import_stats
             }
     
     def _parse_command_block(
         self, dao: TopoDAO, device_id: int, device_name: str,
-        command: str, output: str, source_file: str, collected_at: str
+        command: str, output: str, source_file: str, collected_at: str,
+        import_stats: Optional[Dict[str, int]] = None
     ):
         """解析单个命令块"""
         cmd_lower = command.lower()
@@ -140,6 +155,8 @@ class LogParser:
                     collected_at=collected_at
                 )
                 self.stats['lldp_records'] += 1
+                if import_stats is not None:
+                    import_stats['lldp_count'] += 1
                 
                 # 生成链路记录
                 if neighbor.neighbor_if:
@@ -150,6 +167,8 @@ class LogParser:
                         dst_if=neighbor.neighbor_if,
                         link_type='phy'
                     )
+                    if import_stats is not None:
+                        import_stats['link_count'] += 1
         
         # 2. Eth-Trunk
         elif 'eth-trunk' in cmd_lower:
@@ -164,6 +183,8 @@ class LogParser:
                     oper_status=trunk.oper_status
                 )
                 self.stats['trunks_created'] += 1
+                if import_stats is not None:
+                    import_stats['trunk_count'] += 1
                 
                 # 添加成员接口
                 for member_if in trunk.members:
@@ -190,6 +211,8 @@ class LogParser:
                     oper_status=if_desc.protocol_status
                 )
                 self.stats['interfaces_updated'] += 1
+                if import_stats is not None:
+                    import_stats['interface_count'] += 1
         
         # 4. STP brief
         elif 'stp brief' in cmd_lower:
@@ -200,6 +223,8 @@ class LogParser:
             if blocked_ports:
                 logger.info(f"发现 {len(blocked_ports)} 个 STP 阻塞端口")
                 self.stats['stp_blocked'] += len(blocked_ports)
+                if import_stats is not None:
+                    import_stats['stp_blocked_count'] += len(blocked_ports)
                 
                 # 记录异常
                 import json

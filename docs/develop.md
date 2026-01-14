@@ -5,27 +5,27 @@
 ---
 
 ## 0. 快速浏览（对齐）
-- **定位**：校园/园区网；核心 S12700 + 汇聚 S6730；离线日志解析优先。
-- **核心闭环**：日志导入 → 解析/异常标记 → SQLite → Web/CLI 补全 → Mermaid/PDF 导出。
-- **优先级**：先做可跑通的一跳拓扑 + Web/CLI 最小可用，再补汇聚多跳、自动采集。
+- **定位**：校园/园区网；核心 S12700 + 汇聚 S6730；离线日志解析优先，同时支持 Web 管理与采集。
+- **核心闭环**：日志导入/采集 → 解析/异常标记 → SQLite → Web/CLI 补全 → Mermaid/PDF 导出。
+- **优先级**：先做可跑通的一跳拓扑 + Web 管理最小可用；定时采集依赖调度器常驻执行。
 
 ---
 
 ## 1. 目标与边界
 
 ### 1.1 MVP 范围
-1. **输入**：核心/汇聚交换机通过 SSH 采集的命令输出（`.log/.txt`，UTF-8/UTF-16 均可）。
+1. **输入**：核心/汇聚交换机通过 SSH 采集的命令输出（`.log/.txt`，UTF-8/UTF-16/GBK 均可）。
 2. **解析**：结构化设备信息、LLDP 邻居、Eth-Trunk 成员、接口描述、STP 摘要。
 3. **存储**：SQLite，支持多台设备增量导入；记录来源文件与时间。
 4. **异常标记**：多邻居口、Trunk 成员指向多个设备等，自动打 `suspect`。
 5. **输出**：Mermaid `.mmd/.md`；PDF（Graphviz/ReportLab/Mermaid 转 SVG 再转 PDF）。
-6. **交互**：Web 或 CLI 二选一；可编辑 description、调整链路可信度、导出拓扑。
+6. **交互**：Web + CLI；支持用户认证、设备管理、采集任务、导出拓扑。
 
 ### 1.2 非目标（当前阶段不做）
 - 不做 Visio/其他专有格式导出。
 - 不做实时全网发现，仅离线日志驱动。
 - 不强行自动消除所有环路，优先提示 + 人工确认。
-- 不做复杂权限/多租户（单人运维场景为主）。
+- 不做复杂多租户；仅提供基础角色权限（admin/user/viewer）。
 
 ---
 
@@ -53,7 +53,7 @@ flowchart LR
 - `ui`：Flask/Jinja 或 CLI。
 
 **最小可用要求（MVP）**
-- CLI：`topo import <file>`，`topo export mermaid --device <name>`，`topo export pdf --device <name>`，`topo mark <src_dev> <src_if> <dst_dev> <dst_if> --confidence suspect|trusted|ignore`。
+- CLI：`topo import-log <file>`，`topo export <device> --format mermaid|markdown|pdf-graphviz|pdf-mermaid|dot`，`topo mark <device> <src_if> <dst_device> <dst_if> trusted|suspect|ignore`。
 - Web：上传日志、列表设备、编辑接口描述、标记链路可信度、导出按钮。
 
 ---
@@ -62,6 +62,7 @@ flowchart LR
 - **必跑命令**（核心/汇聚通用）：  
   `display lldp neighbor brief`；`display lldp neighbor system-name`；`display eth-trunk`；`display interface description`；`display stp brief`。  
   可选：`display version`、`display device`、`display interface brief`。
+- **采集器支持**：内置 Huawei/Cisco/H3C 命令集；解析器当前以 Huawei `display` 输出为主。
 - **限制兼容**：`display stp brief` 不带参数；过滤用 `| inc` 时兼容空结果。
 - **文件命名建议**：`{device}_{yyyymmdd_hhmm}.log`，导入时保存 `device_name` 与 `hash` 便于去重。
 - **编码处理**：探测 UTF-8/UTF-16，小文件一次读入；大文件按块流式。
@@ -99,6 +100,10 @@ Eth-Trunk6   NORMAL   1   1000M(a)  1000M(a)  up
 
 索引建议：
 - `lldp_neighbors(device_id, local_if)`；`links(src_device, src_if)`；`imports(hash)`。
+
+管理扩展表（Web 管理系统）：
+- `users`、`managed_devices`、`collection_tasks`、`operation_logs`、`upload_files`、`system_config`。
+- `device_credentials` 用于采集连接信息（单设备一条记录）。
 
 DDL（示例，可直接执行）：
 ```sql
@@ -188,7 +193,7 @@ def normalize_ifname(name: str) -> str:
 ```
 
 ### 5.2 LLDP
-- 同时解析 `neighbor brief`（含 Exptime）与 `neighbor system-name`（设备名更接近 sysname）。
+- 解析 `neighbor brief`（含 Exptime）为主；`neighbor system-name` 可选接入用于补全设备名。
 - 落库键：`(local_device, local_interface, neighbor_device, neighbor_interface)`，附 `exptime`、`source_file`。
 - 对同一接口出现多个邻居，标记 `suspect_loop`。
 
@@ -227,6 +232,7 @@ def normalize_ifname(name: str) -> str:
 - `trunk_inconsistent`：Trunk 成员指向多个设备。
 
 实现建议：
+- 当前默认检测包含 `suspect_loop`、`suspect_mixed_link`、`trunk_inconsistent`；`unstable_neighbor` 需额外触发。
 - 解析完成后按接口聚合邻居，计数>1 → `suspect_loop`。
 - 统计邻居名为空或 `-` 占比>50% → `suspect_mixed_link`。
 - 对同一 `(device, local_if, neighbor_dev)` 不同采集的 `exptime` 波动系数>阈值 → `unstable_neighbor`。
@@ -251,7 +257,7 @@ record import row
 ### 6.1 Mermaid（首选）
 - 默认折叠 Trunk，物理口仅展示前 N 条（配置项，如 30）。
 - 可信度：`trusted` 正常绘制，`suspect` 用特殊样式/颜色，`ignore` 不导出。
-- 多跳：导入多台汇聚日志后，按 BFS 分层展开。
+- 多跳：导入多台汇聚日志后，按 BFS 分层展开（当前实现为中心设备一跳）。
 
 Mermaid 生成示例（函数签名）：
 ```python
@@ -273,45 +279,47 @@ def render_mermaid(db, device, max_phys_links=30):
 ## 7. UI / CLI 需求（最小实现）
 
 ### 7.1 Web（推荐）
-- 路由/功能：
-  - `POST /upload`：上传日志文件，返回导入结果。
-  - `GET /devices`：列表设备，含最近导入时间。
-  - `GET/POST /interfaces/<device>`：查看/更新接口描述。
-  - `GET/POST /links/<device>`：查看/更新链路可信度（trusted/suspect/ignore）。
-  - `GET /export/mermaid?device=`：下载 `.mmd`。
-  - `GET /export/pdf?device=`：下载 `.pdf`。
-- UI 要素：表格 + 内联编辑（description、confidence 切换），导出按钮。
+- 功能要点：用户认证、设备管理、采集任务管理、日志上传、拓扑可视化、导出下载。
+- API：提供设备拓扑与导出接口（`/api/device/<name>/topology`、`/api/device/<name>/export/<format>`）。
+- UI 要素：设备列表、任务列表、异常列表、导出按钮、上传入口。
 
 ### 7.2 CLI（同步 Web 的核心操作）
-- `topo import <file>`：导入日志。
-- `topo list anomalies --device Core_CSS`
-- `topo export mermaid --device Core_CSS --out outputs/core.mmd`
-- `topo export pdf --device Core_CSS --out outputs/core.pdf`
-- `topo mark --src Core_CSS --src-if GE1/6/0/21 --dst Ruijie --dst-if Te0/52 --confidence suspect`
+- `topo import-log <file>`：导入日志（可用 `--force` 忽略哈希检查）。
+- `topo list-devices [--anomalies]`
+- `topo export <device> --format mermaid|markdown|pdf-graphviz|pdf-mermaid|dot -o outputs/core.mmd`
+- `topo mark <device> <src_if> <dst_device> <dst_if> trusted|suspect|ignore`
+- `topo schedule --interval 300`（自动采集调度器）。
+  需在设备管理中启用 `auto_collect` 并设置 `collect_interval`。
 
 ---
 
 ## 8. 开发环境与目录结构
 
 ### 8.1 环境
-- Python 3.11+，依赖：`click`（CLI）、`flask`+`jinja2`（Web 可选）、`sqlite3`、`pydantic`（校验）、`graphviz` 或 `mermaid-cli`。
+- Python 3.11+，依赖：`click`、`flask`、`jinja2`、`werkzeug`、`bcrypt`、`paramiko`、`cryptography`、`pytest`。
+- PDF 导出：系统安装 `graphviz` 或 `mermaid-cli`。
 - 离线场景：提前准备 `mermaid-cli`/`graphviz` 的本地安装包。
+- Web 管理环境变量：`SECRET_KEY`（必需）、`ADMIN_PASSWORD`（初始化管理员）、`FERNET_KEY`（加密设备密码，可存 `~/.topo_fernet_key`）。
 
 ### 8.2 目录建议
 ```
 gcc-topology/
   app.py                 # Flask 入口（可选）
   topo/
-    collector/           # SSH 采集（后续）
+    collector/           # SSH 采集
     parser/              # Huawei 日志解析
     db/                  # sqlite + migration
     exporter/            # mermaid/pdf 导出
     rules/               # 异常检测规则
+    management/          # 设备/任务/认证管理
+    web/                 # Web 界面
   data/
     raw/                 # 原始日志
     parsed/              # 解析中间产物（json）
   docs/
     develop.md
+  uploads/               # Web 上传日志
+  logs/                  # 运行日志
   outputs/
     topology.mmd
     topology.pdf
@@ -321,10 +329,10 @@ gcc-topology/
 
 ## 9. 开发与验证流程
 1. 准备日志：放入 `data/raw/*.log`。
-2. 运行解析：`python -m topo.parser data/raw/core.log`（实现后）。
+2. 运行解析：`./topo_cli import-log data/raw/core.log` 或 `python -m topo import-log data/raw/core.log`。
 3. 查看 SQLite：`sqlite3 topo.db "select * from lldp_neighbors limit 5;"`。
 4. 标记链路/补全描述：通过 Web/CLI。
-5. 导出：`python -m topo.exporter mermaid --device Core_CSS`。
+5. 导出：`./topo_cli export Core_CSS --format mermaid -o outputs/core.mmd`。
 6. 校验：手动检查多邻居口、Trunk 折叠是否正确。
 
 ---

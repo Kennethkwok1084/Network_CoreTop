@@ -67,12 +67,13 @@ class DeviceCollector:
         self.timeout = timeout
         self.read_timeout = read_timeout
     
-    def collect_device_info(self, device_config: Dict) -> Dict:
+    def collect_device_info(self, device_config: Dict, log_callback=None) -> Dict:
         """
         采集单个设备信息
         
         Args:
             device_config: 设备配置字典，包含 mgmt_ip, username, password 等
+            log_callback: 日志回调函数 log_callback(log_type, message)
         
         Returns:
             采集结果字典
@@ -90,6 +91,9 @@ class DeviceCollector:
         
         ssh = None
         try:
+            if log_callback:
+                log_callback('info', f'[连接] 正在连接到 {device_config["mgmt_ip"]}:{device_config.get("mgmt_port", 22)}...')
+            
             # 创建 SSH 客户端
             ssh = paramiko.SSHClient()
             
@@ -125,6 +129,10 @@ class DeviceCollector:
                     look_for_keys=False,
                     allow_agent=False,
                 )
+                
+                if log_callback:
+                    log_callback('success', f'[连接] SSH 连接成功 (用户: {device_config["username"]})')
+                    
             except paramiko.ssh_exception.SSHException as e:
                 if 'not found in known_hosts' in str(e):
                     result['error'] = (
@@ -134,6 +142,8 @@ class DeviceCollector:
                         "2. 或设置 SSH_TRUST_NEW_HOSTS=true (仅限测试环境)"
                     ).format(device_config['mgmt_ip'])
                     logger.error(result['error'])
+                    if log_callback:
+                        log_callback('error', f'[错误] {result["error"]}')
                     return result
                 raise
             
@@ -156,9 +166,12 @@ class DeviceCollector:
             
             # 执行命令
             output_lines = []
-            for cmd in commands:
+            for idx, cmd in enumerate(commands, 1):
                 logger.info(f"执行命令: {cmd}")
                 result['commands'].append(cmd)
+                
+                if log_callback:
+                    log_callback('command', f'[{idx}/{len(commands)}] 执行命令: {cmd}')
                 
                 # 发送命令
                 channel.send(cmd + '\n')
@@ -171,6 +184,10 @@ class DeviceCollector:
                 output_lines.append(f"{'='*60}")
                 output_lines.append(cmd_output)
                 output_lines.append('')
+                
+                if log_callback:
+                    output_preview = cmd_output[:200].replace('\n', ' ') if cmd_output else '(无输出)'
+                    log_callback('output', f'[输出] {output_preview}...')
             
             result['output'] = '\n'.join(output_lines)
             result['status'] = 'success'
@@ -178,9 +195,14 @@ class DeviceCollector:
             
             logger.info(f"设备 {device_config['device_name']} 采集成功")
             
+            if log_callback:
+                log_callback('success', f'[采集] 采集完成，共收集 {len(result["output"])} 字节数据')
+            
         except paramiko.AuthenticationException as e:
             error_msg = f"认证失败: {str(e)}"
             logger.error(error_msg)
+            if log_callback:
+                log_callback('error', f'[错误] {error_msg}')
             result['status'] = 'failed'
             result['error'] = error_msg
             result['completed_at'] = datetime.now()
@@ -188,6 +210,8 @@ class DeviceCollector:
         except paramiko.SSHException as e:
             error_msg = f"SSH 连接错误: {str(e)}"
             logger.error(error_msg)
+            if log_callback:
+                log_callback('error', f'[错误] {error_msg}')
             result['status'] = 'failed'
             result['error'] = error_msg
             result['completed_at'] = datetime.now()
@@ -195,6 +219,8 @@ class DeviceCollector:
         except Exception as e:
             error_msg = f"采集失败: {str(e)}"
             logger.error(error_msg)
+            if log_callback:
+                log_callback('error', f'[错误] {error_msg}')
             result['status'] = 'failed'
             result['error'] = error_msg
             result['completed_at'] = datetime.now()

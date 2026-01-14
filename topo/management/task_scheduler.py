@@ -180,8 +180,126 @@ class TaskScheduler:
         conn.close()
         
         return affected > 0
+
+    def _parse_timestamp(self, value) -> Optional[datetime]:
+        """解析数据库时间戳"""
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='ignore')
+        try:
+            return datetime.fromisoformat(value)
+        except (TypeError, ValueError):
+            pass
+        try:
+            return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+        except (TypeError, ValueError):
+            return None
+
+    def _device_has_pending_task(self, device_id: int) -> bool:
+        """检查设备是否已有待执行或运行中的任务"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM collection_tasks
+            WHERE device_id = ? AND status IN ('pending', 'running')
+            """,
+            (device_id,)
+        )
+        has_pending = cursor.fetchone()[0] > 0
+        conn.close()
+        return has_pending
+
+    def _get_last_success_time(self, device_id: int) -> Optional[datetime]:
+        """获取最近一次成功采集时间"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT MAX(completed_at) FROM collection_tasks
+            WHERE device_id = ? AND status = 'success'
+            """,
+            (device_id,)
+        )
+        last_completed = cursor.fetchone()[0]
+        conn.close()
+        return self._parse_timestamp(last_completed)
+
+    def enqueue_due_tasks(self) -> List[int]:
+        """
+        为启用自动采集的设备创建到期任务
+
+        Returns:
+            新创建的任务 ID 列表
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, device_name, collect_interval
+            FROM managed_devices
+            WHERE is_active = 1 AND auto_collect = 1
+            """
+        )
+        devices = cursor.fetchall()
+        conn.close()
+
+        created_tasks = []
+        now = datetime.now()
+
+        for device in devices:
+            device_id = device['id']
+            try:
+                collect_interval = int(device['collect_interval'] or 86400)
+            except (TypeError, ValueError):
+                collect_interval = 86400
+
+            if self._device_has_pending_task(device_id):
+                continue
+
+            last_success = self._get_last_success_time(device_id)
+            if not last_success:
+                due = True
+            else:
+                elapsed = (now - last_success).total_seconds()
+                due = elapsed >= collect_interval
+
+            if due:
+                task_id = self.create_task(device_id, task_type='scheduled')
+                created_tasks.append(task_id)
+                logger.info(
+                    f"设备 {device['device_name']} 到期，创建任务 #{task_id} "
+                    f"(间隔: {collect_interval}s)"
+                )
+
+        return created_tasks
+
+    def execute_pending_tasks(self, collector, output_dir: Path, limit: int = None) -> List[int]:
+        """
+        执行所有待执行的任务
+
+        Args:
+            collector: DeviceCollector 实例
+            output_dir: 日志输出目录
+            limit: 最大执行数量
+
+        Returns:
+            执行过的任务 ID 列表
+        """
+        tasks = self.get_pending_tasks()
+        if limit is not None:
+            tasks = tasks[:limit]
+
+        executed = []
+        for task in tasks:
+            if self.execute_task(task['id'], collector, output_dir):
+                executed.append(task['id'])
+        return executed
     
-    def execute_task(self, task_id: int, collector, output_dir: Path) -> bool:
+    def execute_task(self, task_id: int, collector, output_dir: Path, log_callback=None) -> bool:
         """
         执行采集任务
         
@@ -189,6 +307,7 @@ class TaskScheduler:
             task_id: 任务 ID
             collector: DeviceCollector 实例
             output_dir: 输出目录
+            log_callback: 日志回调函数 log_callback(log_type, message)
         
         Returns:
             是否成功
@@ -198,10 +317,15 @@ class TaskScheduler:
         task = self.get_task(task_id)
         if not task:
             logger.error(f"任务 #{task_id} 不存在")
+            if log_callback:
+                log_callback('error', f'[错误] 任务 #{task_id} 不存在')
             return False
         
         # 更新为运行中
         self.update_task_status(task_id, 'running')
+        if log_callback:
+            log_callback('info', f'[开始] 任务 #{task_id} 开始执行')
+            log_callback('info', f'[设备] {task["device_name"]} ({task["mgmt_ip"]})')
         
         try:
             # 获取设备信息（包含解密后的密码）
@@ -211,13 +335,17 @@ class TaskScheduler:
             if not device:
                 raise Exception(f"设备 ID {task['device_id']} 不存在")
             
-            # 执行采集
+            # 执行采集（传递日志回调）
             logger.info(f"开始执行任务 #{task_id}: {device['device_name']}")
-            result = collector.collect_device_info(device)
+            result = collector.collect_device_info(device, log_callback=log_callback)
             
             if result['status'] == 'success':
                 # 保存日志文件
                 log_path = collector.save_to_file(result, output_dir)
+                
+                if log_callback:
+                    log_callback('success', f'[完成] 日志已保存到: {log_path.name if log_path else "未知"}')
+                    log_callback('success', f'[成功] 任务执行成功，共执行 {len(result["commands"])} 条命令')
                 
                 # 更新任务状态
                 self.update_task_status(
@@ -231,17 +359,23 @@ class TaskScheduler:
                 return True
             else:
                 # 更新为失败
+                error_msg = result.get('error', 'Unknown error')
+                if log_callback:
+                    log_callback('error', f'[失败] {error_msg}')
+                
                 self.update_task_status(
                     task_id,
                     'failed',
-                    error_message=result.get('error'),
+                    error_message=error_msg,
                     commands_executed=result['commands']
                 )
                 
-                logger.error(f"任务 #{task_id} 执行失败: {result.get('error')}")
+                logger.error(f"任务 #{task_id} 执行失败: {error_msg}")
                 return False
                 
         except Exception as e:
             logger.error(f"任务 #{task_id} 执行异常: {str(e)}")
+            if log_callback:
+                log_callback('error', f'[异常] {str(e)}')
             self.update_task_status(task_id, 'failed', error_message=str(e))
             return False

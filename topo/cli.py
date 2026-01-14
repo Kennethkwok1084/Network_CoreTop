@@ -4,6 +4,7 @@ CLI 主入口
 使用 Click 实现统一的命令行接口
 """
 import click
+import time
 from pathlib import Path
 
 # 设置日志
@@ -30,9 +31,9 @@ def import_log(ctx, log_file, device, force):
     导入华为交换机日志文件
     
     示例:
-        topo import data/raw/Core_CSS_20231228.log
-        topo import data/raw/Core_CSS_20231228.log --device Core
-        topo import data/raw/Core_CSS_20231228.log --force
+        topo import-log data/raw/Core_CSS_20231228.log
+        topo import-log data/raw/Core_CSS_20231228.log --device Core
+        topo import-log data/raw/Core_CSS_20231228.log --force
     """
     from topo.parser import LogParser
     
@@ -78,8 +79,8 @@ def list_devices(ctx, anomalies):
     列出所有设备
     
     示例:
-        topo list
-        topo list --anomalies
+        topo list-devices
+        topo list-devices --anomalies
     """
     from topo.db.dao import TopoDAO
     
@@ -317,6 +318,48 @@ def anomalies(ctx, severity):
                 click.echo(f"  详情: {json.dumps(detail, ensure_ascii=False, indent=4)}")
             
             click.echo()
+
+
+@cli.command()
+@click.option('--interval', type=int, default=300, help='调度轮询间隔（秒）')
+@click.option('--once', is_flag=True, help='只执行一次调度轮询')
+@click.option('--log-dir', default='data/raw', help='采集日志输出目录')
+@click.option('--max-tasks', type=int, help='每轮最多执行的任务数量')
+@click.pass_context
+def schedule(ctx, interval, once, log_dir, max_tasks):
+    """
+    运行采集任务调度器（用于自动采集）
+
+    示例:
+        topo schedule --interval 300
+        topo schedule --once
+    """
+    from topo.management.task_scheduler import TaskScheduler
+    from topo.management.collector import DeviceCollector
+
+    db_path = ctx.obj['database']
+    scheduler = TaskScheduler(db_path)
+    collector = DeviceCollector()
+    output_dir = Path(log_dir)
+
+    click.echo("启动任务调度器...")
+    while True:
+        created = scheduler.enqueue_due_tasks()
+        if created:
+            click.echo(f"新建任务: {', '.join(str(task_id) for task_id in created)}")
+
+        executed = scheduler.execute_pending_tasks(
+            collector,
+            output_dir,
+            limit=max_tasks
+        )
+        if executed:
+            click.echo(f"已执行任务: {', '.join(str(task_id) for task_id in executed)}")
+
+        if once:
+            break
+
+        time.sleep(interval)
 
 
 @cli.command()

@@ -264,6 +264,10 @@ class ImportDAO:
         cursor.execute("""
             INSERT INTO imports (device_name, source_file, hash)
             VALUES (?, ?, ?)
+            ON CONFLICT(hash) DO UPDATE SET
+                device_name = excluded.device_name,
+                source_file = excluded.source_file,
+                imported_at = CURRENT_TIMESTAMP
         """, (device_name, source_file, file_hash))
     
     def list_recent(self, limit: int = 10) -> List[Dict]:
