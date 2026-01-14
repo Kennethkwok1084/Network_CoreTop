@@ -75,7 +75,9 @@
                     <button class="btn btn-sm" onclick="showLogs({{ task.id }})"
                         style="background: #1890ff; color: white;">📡 查看日志</button>
                     {% elif task.status == 'failed' %}
-                    <button class="btn btn-sm" onclick="showError({{ task.id }}, '{{ task.error_message | replace("'", "\\'") | replace('"', '\\"') | replace("\n", "\\n") if task.error_message else "未知错误" }}')"
+                    <button class="btn btn-sm"
+                        onclick="showError({{ task.id }}, '{{ task.error_message | replace("'", "\\'") | replace('"', '
+                        \\"') | replace("\n", "\\n" ) if task.error_message else "未知错误" }}')"
                         style="background: #ff4d4f; color: white;">⚠️ 查看错误</button>
                     {% endif %}
                 </td>
@@ -189,10 +191,10 @@
         const modal = document.getElementById('logModal');
         const logContent = document.getElementById('logContent');
         const title = modal.querySelector('h3');
-        
+
         title.textContent = '⚠️ 任务执行错误';
         modal.style.display = 'block';
-        
+
         logContent.innerHTML = `
             <div style="color: #f48771; font-size: 14px; line-height: 1.8;">
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(244, 135, 113, 0.1); border-left: 3px solid #f48771;">
