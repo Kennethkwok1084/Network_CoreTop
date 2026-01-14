@@ -29,9 +29,9 @@ def parse_lldp_brief(text: str) -> List[LLDPNeighbor]:
     
     示例输出：
     ```
-    Local Intf    Exptime  Neighbor Dev            Neighbor Intf
-    GE1/6/0/21    101      Ruijie                  Te0/52
-    GE1/6/0/21    102      Huawei                  GE0/0/0
+    Local Intf       Neighbor Dev             Neighbor Intf             Exptime(s)
+    GE1/6/0/3        ZXR10                    gei-0/4/0/20              105
+    GE1/6/0/6        Ruijie                   Te0/52                    114
     ```
     
     Args:
@@ -65,15 +65,17 @@ def parse_lldp_brief(text: str) -> List[LLDPNeighbor]:
             parts = re.split(r'\s{2,}', line.strip())
             if len(parts) >= 3:
                 local_if = normalize_ifname(parts[0])
-                exptime_str = parts[1]
-                neighbor_dev = parts[2]
-                neighbor_if = normalize_ifname(parts[3]) if len(parts) >= 4 else None
+                neighbor_dev = parts[1]
+                neighbor_if = normalize_ifname(parts[2]) if len(parts) >= 3 else None
+                exptime_str = parts[3] if len(parts) >= 4 else None
                 
                 # 尝试解析 exptime
-                try:
-                    exptime = int(exptime_str)
-                except ValueError:
-                    exptime = None
+                exptime = None
+                if exptime_str:
+                    try:
+                        exptime = int(exptime_str)
+                    except ValueError:
+                        pass
                 
                 neighbors.append(LLDPNeighbor(
                     local_if=local_if,

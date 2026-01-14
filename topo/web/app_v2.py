@@ -19,6 +19,11 @@ from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 
 from topo.db.dao import TopoDAO
+from topo.db.schema import Database
+from topo.db.management_schema import (
+    USERS_TABLE, MANAGED_DEVICES_TABLE, COLLECTION_TASKS_TABLE,
+    OPERATION_LOGS_TABLE, UPLOAD_FILES_TABLE, SYSTEM_CONFIG_TABLE
+)
 from topo.exporter.mermaid import MermaidExporter
 from topo.rules.detector import AnomalyDetector
 from topo.management.auth import UserAuth
@@ -26,6 +31,38 @@ from topo.management.device_manager import DeviceManager
 from topo.management.collector import DeviceCollector
 from topo.management.task_scheduler import TaskScheduler
 # from topo.parser.__main__ import parse_log_file  # 暂时不用
+
+
+# ========== 数据库初始化 ==========
+def _init_databases(db_path: str):
+    """自动初始化拓扑数据库和管理数据库"""
+    import sqlite3
+    
+    # 初始化拓扑数据库
+    topo_db_path = db_path if 'topology' in db_path or db_path == 'topo.db' else 'data/topology.db'
+    try:
+        topo_db = Database(topo_db_path)
+        topo_db.connect()
+        topo_db.init_schema()
+        topo_db.close()
+    except Exception as e:
+        logging.warning(f"拓扑数据库初始化警告: {e}")
+    
+    # 初始化管理数据库
+    mgmt_db_path = 'data/management.db'
+    try:
+        conn = sqlite3.connect(mgmt_db_path)
+        cursor = conn.cursor()
+        
+        # 执行所有表的创建
+        for sql in [USERS_TABLE, MANAGED_DEVICES_TABLE, COLLECTION_TASKS_TABLE,
+                    OPERATION_LOGS_TABLE, UPLOAD_FILES_TABLE, SYSTEM_CONFIG_TABLE]:
+            cursor.execute(sql)
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logging.warning(f"管理数据库初始化警告: {e}")
 
 
 # ========== CSRF 保护工具函数 ==========
@@ -128,6 +165,9 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
     # 确保目录存在
     Path(upload_folder).mkdir(parents=True, exist_ok=True)
     Path(log_folder).mkdir(parents=True, exist_ok=True)
+    
+    # 自动初始化数据库
+    _init_databases(db_path)
     
     # ========== 辅助函数 ==========
     def format_duration(started_at, completed_at):
@@ -419,6 +459,41 @@ def create_app(db_path="topo.db", upload_folder="uploads", log_folder="data/raw"
         else:
             flash('删除失败', 'error')
         return redirect(url_for('manage_devices'))
+    
+    @app.route('/manage/devices/discover')
+    @login_required
+    def discover_neighbor_devices():
+        """从LLDP拓扑中发现邻居设备"""
+        device_mgr = DeviceManager(app.config['DATABASE'])
+        existing_devices = {dev['device_name'] for dev in device_mgr.list_devices()}
+        
+        # 从拓扑数据库查询所有邻居设备
+        with TopoDAO('data/topology.db') as dao:
+            lldp_records = dao.lldp_neighbors.list_all()
+        
+        # 统计邻居设备
+        neighbor_devices = {}
+        for record in lldp_records:
+            neighbor = record['neighbor_dev']
+            if neighbor and neighbor not in existing_devices:
+                if neighbor not in neighbor_devices:
+                    neighbor_devices[neighbor] = {
+                        'name': neighbor,
+                        'link_count': 0,
+                        'interfaces': []
+                    }
+                neighbor_devices[neighbor]['link_count'] += 1
+                neighbor_devices[neighbor]['interfaces'].append({
+                    'local_if': record.get('local_if'),
+                    'neighbor_if': record.get('neighbor_if')
+                })
+        
+        # 按链路数排序
+        discovered = sorted(neighbor_devices.values(), key=lambda x: x['link_count'], reverse=True)
+        
+        return render_template('discover_devices.html', 
+                             discovered_devices=discovered,
+                             discovered_count=len(discovered))
     
     # ========== 任务管理路由 ==========
     @app.route('/manage/tasks')

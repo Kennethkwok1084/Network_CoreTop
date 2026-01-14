@@ -165,7 +165,7 @@ class MermaidExporter:
         lines.append("    %% 链路定义")
         for link in styled_links:
             lines.append(
-                f"    {link['src']} {link['arrow']}{link['label']}|] {link['dst']}"
+                f"    {link['src']} {link['arrow']}{link['label']}| {link['dst']}"
             )
         
         lines.append("")
