@@ -99,8 +99,7 @@ class MermaidExporter:
         """
         lines = []
         
-        # 头部
-        lines.append("```mermaid")
+        # 头部 - 直接输出Mermaid代码，不需要markdown代码块标记
         lines.append("graph LR")
         lines.append("")
         
@@ -176,8 +175,7 @@ class MermaidExporter:
         lines.append("    classDef suspect fill:#ffe6e6,stroke:#ff4d4f,stroke-width:2px")
         lines.append("    classDef trunk stroke:#52c41a,stroke-width:3px")
         
-        lines.append("```")
-        
+        return "\n".join(lines)
         return "\n".join(lines)
     
     def _sanitize_node_id(self, name: str) -> str:
