@@ -75,7 +75,8 @@
                     <button class="btn btn-sm" onclick="showLogs({{ task.id }})"
                         style="background: #1890ff; color: white;">📡 查看日志</button>
                     {% elif task.status == 'failed' %}
-                    <span style="color: #999; font-size: 12px;" title="{{ task.error_message }}">⚠️ 查看错误</span>
+                    <button class="btn btn-sm" onclick="showError({{ task.id }}, '{{ task.error_message | replace("'", "\\'") | replace('"', '\\"') | replace("\n", "\\n") if task.error_message else "未知错误" }}')"
+                        style="background: #ff4d4f; color: white;">⚠️ 查看错误</button>
                     {% endif %}
                 </td>
             </tr>
@@ -182,6 +183,40 @@
             eventSource.close();
             eventSource = null;
         }
+    }
+
+    function showError(taskId, errorMessage) {
+        const modal = document.getElementById('logModal');
+        const logContent = document.getElementById('logContent');
+        const title = modal.querySelector('h3');
+        
+        title.textContent = '⚠️ 任务执行错误';
+        modal.style.display = 'block';
+        
+        logContent.innerHTML = `
+            <div style="color: #f48771; font-size: 14px; line-height: 1.8;">
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(244, 135, 113, 0.1); border-left: 3px solid #f48771;">
+                    <strong>任务 ID:</strong> #${taskId}
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <strong>错误信息:</strong>
+                </div>
+                <div style="padding: 15px; background: rgba(244, 135, 113, 0.05); border-radius: 4px; white-space: pre-wrap; color: #d4d4d4;">
+                    ${escapeHtml(errorMessage || '未知错误')}
+                </div>
+                <div style="margin-top: 20px; color: #4ec9b0;">
+                    <strong>💡 常见问题排查:</strong>
+                    <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+                        <li><strong>FERNET_KEY 未设置:</strong> 运行 <code style="background: #2d2d2d; padding: 2px 6px; border-radius: 3px;">export FERNET_KEY='密钥'</code></li>
+                        <li><strong>SSH 连接失败:</strong> 检查设备IP、端口、用户名密码是否正确</li>
+                        <li><strong>认证失败:</strong> 验证SSH凭证是否有效</li>
+                        <li><strong>超时错误:</strong> 检查网络连通性和防火墙设置</li>
+                        <li><strong>主机密钥验证失败:</strong> 运行 <code style="background: #2d2d2d; padding: 2px 6px; border-radius: 3px;">ssh-keyscan IP >> ~/.ssh/known_hosts</code></li>
+                    </ul>
+                </div>
+            </div>
+        `;
+        logContent.scrollTop = 0;
     }
 
     function escapeHtml(text) {

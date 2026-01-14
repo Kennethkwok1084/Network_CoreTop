@@ -374,8 +374,9 @@ class TaskScheduler:
                 return False
                 
         except Exception as e:
-            logger.error(f"任务 #{task_id} 执行异常: {str(e)}")
+            error_msg = str(e) if str(e) else repr(e)
+            logger.error(f"任务 #{task_id} 执行异常: {error_msg}", exc_info=True)
             if log_callback:
-                log_callback('error', f'[异常] {str(e)}')
-            self.update_task_status(task_id, 'failed', error_message=str(e))
+                log_callback('error', f'[异常] {error_msg}')
+            self.update_task_status(task_id, 'failed', error_message=error_msg)
             return False
