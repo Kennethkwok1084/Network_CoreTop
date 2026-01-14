@@ -347,6 +347,38 @@ class TaskScheduler:
                     log_callback('success', f'[完成] 日志已保存到: {log_path.name if log_path else "未知"}')
                     log_callback('success', f'[成功] 任务执行成功，共执行 {len(result["commands"])} 条命令')
                 
+                # 自动解析并导入到拓扑数据库
+                if log_path and log_path.exists():
+                    try:
+                        if log_callback:
+                            log_callback('info', f'[解析] 正在解析日志文件并导入到拓扑数据库...')
+                        
+                        # 导入解析器
+                        from topo.parser.__main__ import LogParser
+                        
+                        # 解析日志文件
+                        parser = LogParser(self.db_path)
+                        parse_result = parser.import_log_file(str(log_path), device_name=device['device_name'])
+                        
+                        if log_callback:
+                            if parse_result.get('status') == 'success':
+                                stats = parse_result.get('stats', {})
+                                devices = stats.get('devices_created', 0)
+                                links = stats.get('lldp_records', 0)
+                                log_callback('success', f'[导入] 成功导入拓扑数据：{devices} 个设备，{links} 条LLDP记录')
+                            elif parse_result.get('status') == 'skipped':
+                                log_callback('info', f'[跳过] 该日志文件已导入过')
+                            else:
+                                log_callback('error', f'[错误] 导入失败: {parse_result.get("reason", "未知")}')
+                        
+                        logger.info(f"任务 #{task_id} 日志已自动导入到拓扑数据库")
+                    except Exception as parse_error:
+                        error_msg = f"日志解析失败: {str(parse_error)}"
+                        logger.warning(f"任务 #{task_id} {error_msg}")
+                        if log_callback:
+                            log_callback('error', f'[警告] {error_msg}')
+                        # 解析失败不影响任务成功状态
+                
                 # 更新任务状态
                 self.update_task_status(
                     task_id,
