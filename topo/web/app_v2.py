@@ -366,8 +366,6 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
             # 检查语法问题
             if '|]' in mermaid_code:
                 logger.error(f"[设备详情] ⚠️  发现语法错误: 包含 |]")
-            if '```mermaid' not in mermaid_code:
-                logger.error(f"[设备详情] ⚠️  Mermaid代码块格式错误")
         
         return render_template('device_detail.html', 
                              device=device, 

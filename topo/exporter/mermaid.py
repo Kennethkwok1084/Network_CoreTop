@@ -99,8 +99,8 @@ class MermaidExporter:
         """
         lines = []
         
-        # 头部 - 直接输出Mermaid代码，不需要markdown代码块标记
-        lines.append("graph LR")
+        # 使用TB(从上到下)布局，更清晰
+        lines.append("graph TB")
         lines.append("")
         
         # 收集节点和链路
@@ -113,18 +113,27 @@ class MermaidExporter:
             nodes.add(src)
             nodes.add(dst)
             
-            # 构建链路标签（避免使用特殊Unicode字符）
-            label_parts = []
+            # 简化链路标签 - 只显示接口简称
+            def simplify_interface(ifname):
+                """简化接口名称"""
+                if not ifname:
+                    return ""
+                # GigabitEthernet1/6/0/3 -> Gi1/6/0/3
+                ifname = ifname.replace("GigabitEthernet", "Gi")
+                ifname = ifname.replace("TenGigabitEthernet", "10Gi")
+                ifname = ifname.replace("Ten-GigabitEthernet", "10Gi")
+                ifname = ifname.replace("XGigabitEthernet", "XGi")
+                # 如果是数字或MAC地址，保留
+                return ifname
+            
+            src_if = simplify_interface(link['src_if'])
+            dst_if = simplify_interface(link['dst_if'])
+            
+            # 构建简洁标签
             if link['link_type'] == 'trunk':
-                label_parts.append(f"{link['src_if']} <-> {link['dst_if']}")
+                label = f"{src_if}⇄{dst_if}"
             else:
-                label_parts.append(f"{link['src_if']} - {link['dst_if']}")
-            
-            # 添加备注
-            if link.get('notes'):
-                label_parts.append(f"({link['notes']})")
-            
-            label = " ".join(label_parts)
+                label = f"{src_if}"  # 只显示本地接口
             
             # 根据可信度选择箭头样式
             confidence = link.get('confidence', 'trusted')
@@ -149,14 +158,27 @@ class MermaidExporter:
                 'class': link_class
             })
         
-        # 定义节点（添加显示名称）
+        # 定义节点（添加图标和样式）
         lines.append("    %% 节点定义")
+        
+        # 中心设备特殊样式
+        center_id = self._sanitize_node_id(center_device) if center_device else None
+        
         for node_id in sorted(nodes):
             display_name = node_id.replace('_', ' ')
-            if center_device and node_id == self._sanitize_node_id(center_device):
-                lines.append(f"    {node_id}[{display_name}]:::center")
+            
+            if node_id == center_id:
+                # 中心核心交换机 - 使用六边形
+                lines.append(f"    {node_id}{{{{{display_name}}}}}:::center")
+            elif node_id == 'Unknown':
+                # 未知设备 - 使用虚线框
+                lines.append(f"    {node_id}[{display_name}]:::unknown")
+            elif 'FW' in node_id or 'USG' in node_id:
+                # 防火墙 - 使用菱形
+                lines.append(f"    {node_id}{{{display_name}}}:::firewall")
             else:
-                lines.append(f"    {node_id}[{display_name}]")
+                # 普通设备 - 圆角矩形
+                lines.append(f"    {node_id}({display_name}):::normal")
         
         lines.append("")
         
@@ -169,11 +191,14 @@ class MermaidExporter:
         
         lines.append("")
         
-        # 定义样式类
+        # 定义样式类 - 更丰富的配色方案
         lines.append("    %% 样式定义")
-        lines.append("    classDef center fill:#e6f7ff,stroke:#1890ff,stroke-width:3px")
-        lines.append("    classDef suspect fill:#ffe6e6,stroke:#ff4d4f,stroke-width:2px")
-        lines.append("    classDef trunk stroke:#52c41a,stroke-width:3px")
+        lines.append("    classDef center fill:#1890ff,stroke:#0050b3,stroke-width:4px,color:#fff")
+        lines.append("    classDef firewall fill:#faad14,stroke:#d48806,stroke-width:3px,color:#000")
+        lines.append("    classDef normal fill:#f0f5ff,stroke:#69c0ff,stroke-width:2px,color:#000")
+        lines.append("    classDef unknown fill:#f5f5f5,stroke:#d9d9d9,stroke-width:2px,stroke-dasharray: 5 5,color:#8c8c8c")
+        lines.append("    classDef suspect fill:#fff1f0,stroke:#ff4d4f,stroke-width:2px")
+        lines.append("    classDef trunk stroke:#52c41a,stroke-width:4px")
         
         return "\n".join(lines)
         return "\n".join(lines)
