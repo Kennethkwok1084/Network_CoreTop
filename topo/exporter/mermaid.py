@@ -190,15 +190,18 @@ class MermaidExporter:
         Returns:
             清理后的 ID
         """
-        # 处理空名称或只有特殊字符
-        if not name or not name.strip() or set(name.strip()) <= {'-', '_', ' ', '.'}:
+        import re
+        
+        # 处理空名称
+        if not name or not name.strip():
             return 'Unknown'
         
-        # 替换特殊字符为下划线
-        sanitized = name.replace('-', '_').replace('.', '_').replace(' ', '_')
+        # 只保留字母、数字和下划线，其他字符(包括#、&、-、.、空格等)替换为下划线
+        sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+        
         # 去除连续下划线
-        while '__' in sanitized:
-            sanitized = sanitized.replace('__', '_')
+        sanitized = re.sub(r'_+', '_', sanitized)
+        
         # 去除首尾下划线
         sanitized = sanitized.strip('_')
         
