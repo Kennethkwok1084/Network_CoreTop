@@ -356,11 +356,11 @@ def create_app(db_path="data/topology.db", upload_folder="uploads", log_folder="
                 max_phy_links=50
             )
             
-            # 输出Mermaid代码（前20行）用于调试
+            # 输出完整Mermaid代码用于调试
             lines = mermaid_code.split('\n')
             logger.info(f"[设备详情] 生成Mermaid代码 {len(lines)} 行")
-            logger.info(f"[设备详情] 代码预览（前20行）:")
-            for i, line in enumerate(lines[:20], 1):
+            logger.info(f"[设备详情] 完整代码:")
+            for i, line in enumerate(lines, 1):
                 logger.info(f"  {i:3}: {line}")
             
             # 检查语法问题
