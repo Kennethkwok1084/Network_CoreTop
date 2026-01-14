@@ -114,12 +114,12 @@ class MermaidExporter:
             nodes.add(src)
             nodes.add(dst)
             
-            # 构建链路标签
+            # 构建链路标签（避免使用特殊Unicode字符）
             label_parts = []
             if link['link_type'] == 'trunk':
-                label_parts.append(f"{link['src_if']} ⇄ {link['dst_if']}")
+                label_parts.append(f"{link['src_if']} <-> {link['dst_if']}")
             else:
-                label_parts.append(f"{link['src_if']} → {link['dst_if']}")
+                label_parts.append(f"{link['src_if']} - {link['dst_if']}")
             
             # 添加备注
             if link.get('notes'):
