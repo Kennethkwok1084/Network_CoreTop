@@ -37,6 +37,11 @@ from topo.management.task_scheduler import TaskScheduler
 def _init_databases(db_path: str):
     """自动初始化拓扑数据库和管理数据库"""
     import sqlite3
+    from pathlib import Path
+    
+    # 确保 data 目录存在
+    data_dir = Path('data')
+    data_dir.mkdir(exist_ok=True)
     
     # 初始化拓扑数据库
     topo_db_path = db_path if 'topology' in db_path or db_path == 'topo.db' else 'data/topology.db'
@@ -45,12 +50,16 @@ def _init_databases(db_path: str):
         topo_db.connect()
         topo_db.init_schema()
         topo_db.close()
+        logging.info(f"✓ 拓扑数据库已初始化: {topo_db_path}")
     except Exception as e:
         logging.warning(f"拓扑数据库初始化警告: {e}")
     
     # 初始化管理数据库
     mgmt_db_path = 'data/management.db'
     try:
+        # 确保父目录存在
+        Path(mgmt_db_path).parent.mkdir(parents=True, exist_ok=True)
+        
         conn = sqlite3.connect(mgmt_db_path)
         cursor = conn.cursor()
         
@@ -61,6 +70,7 @@ def _init_databases(db_path: str):
         
         conn.commit()
         conn.close()
+        logging.info(f"✓ 管理数据库已初始化: {mgmt_db_path}")
     except Exception as e:
         logging.warning(f"管理数据库初始化警告: {e}")
 
