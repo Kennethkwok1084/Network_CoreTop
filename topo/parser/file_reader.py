@@ -129,10 +129,14 @@ def split_command_blocks(text: str) -> List[Tuple[str, str]]:
     """
     按命令提示符分割日志为多个命令块
     
-    华为设备命令提示符示例：
-    - <Huawei>display lldp neighbor brief
-    - [Huawei]display interface description
-    - [~Huawei]display stp brief
+    支持两种格式：
+    1. 华为设备命令提示符：
+       - <Huawei>display lldp neighbor brief
+       - [Huawei]display interface description
+    2. 采集器格式（分隔线）：
+       ============================================================
+       命令: display version
+       ============================================================
     
     Args:
         text: 完整日志文本
@@ -142,24 +146,44 @@ def split_command_blocks(text: str) -> List[Tuple[str, str]]:
     """
     blocks = []
     
-    # 匹配命令提示符 + 命令行
-    # 支持 <device>, [device], [~device] 等格式
-    pattern = r'[<\[][\~]?[\w\-]+[>\]]\s*(display\s+.+?)(?=\r?\n)'
+    # 优先尝试匹配采集器格式（带分隔线）
+    separator_pattern = r'={50,}\s*\n命令:\s*(.+?)\s*\n={50,}\s*\n'
+    matches = list(re.finditer(separator_pattern, text, re.IGNORECASE))
     
-    matches = list(re.finditer(pattern, text, re.IGNORECASE))
-    
-    for i, match in enumerate(matches):
-        command = match.group(1).strip()
-        start_pos = match.end()
+    if matches:
+        # 使用采集器格式解析
+        for i, match in enumerate(matches):
+            command = match.group(1).strip()
+            start_pos = match.end()
+            
+            # 找到下一个命令的起始位置
+            if i + 1 < len(matches):
+                end_pos = matches[i + 1].start()
+            else:
+                end_pos = len(text)
+            
+            output = text[start_pos:end_pos].strip()
+            blocks.append((command, output))
+    else:
+        # 回退到原始华为提示符格式
+        # 匹配命令提示符 + 命令行
+        # 支持 <device>, [device], [~device] 等格式
+        pattern = r'[<\[][\~]?[\w\-]+[>\]]\s*(display\s+.+?)(?=\r?\n)'
         
-        # 找到下一个命令的起始位置
-        if i + 1 < len(matches):
-            end_pos = matches[i + 1].start()
-        else:
-            end_pos = len(text)
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
         
-        output = text[start_pos:end_pos].strip()
-        blocks.append((command, output))
+        for i, match in enumerate(matches):
+            command = match.group(1).strip()
+            start_pos = match.end()
+            
+            # 找到下一个命令的起始位置
+            if i + 1 < len(matches):
+                end_pos = matches[i + 1].start()
+            else:
+                end_pos = len(text)
+            
+            output = text[start_pos:end_pos].strip()
+            blocks.append((command, output))
     
     return blocks
 

@@ -362,10 +362,11 @@ class TaskScheduler:
                         
                         if log_callback:
                             if parse_result.get('status') == 'success':
-                                stats = parse_result.get('stats', {})
-                                devices = stats.get('devices_created', 0)
-                                links = stats.get('lldp_records', 0)
-                                log_callback('success', f'[导入] 成功导入拓扑数据：{devices} 个设备，{links} 条LLDP记录')
+                                # 统计信息直接在结果中，不在 stats 子字典中
+                                lldp = parse_result.get('lldp_count', 0)
+                                links = parse_result.get('link_count', 0)
+                                interfaces = parse_result.get('interface_count', 0)
+                                log_callback('success', f'[导入] 成功导入拓扑数据：{lldp} 条LLDP记录，{links} 条链路，{interfaces} 个接口')
                             elif parse_result.get('status') == 'skipped':
                                 log_callback('info', f'[跳过] 该日志文件已导入过')
                             else:
