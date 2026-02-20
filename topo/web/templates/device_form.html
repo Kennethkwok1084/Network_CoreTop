@@ -109,6 +109,50 @@
             </div>
         </div>
 
+        <!-- 上联配置 -->
+        <div style="border-top: 1px solid #eee; margin-top: 20px; padding-top: 20px;">
+            <h3 style="color: #2c3e50; margin-bottom: 15px;">🔗 上联配置（多跳拓扑）</h3>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label for="uplink_device_id">上联核心交换机</label>
+                    <select id="uplink_device_id" name="uplink_device_id">
+                        <option value="">无（使用LLDP自动发现）</option>
+                        {% if core_devices %}
+                            {% for core in core_devices %}
+                                <option value="{{ core.id }}" 
+                                    {% if device and device.uplink_device_id == core.id %}selected{% endif %}>
+                                    {{ core.device_name }} ({{ core.mgmt_ip }})
+                                </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <small style="color: #999; display: block; margin-top: 5px;">
+                        选择此设备连接到哪个核心交换机
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="uplink_interface">上联接口</label>
+                    <input type="text" id="uplink_interface" name="uplink_interface" 
+                        value="{{ device.uplink_interface if device else '' }}"
+                        placeholder="例如: 1/6/0/6 或 GigabitEthernet1/0/1">
+                    <small style="color: #999; display: block; margin-top: 5px;">
+                        核心交换机上连接此设备的接口编号
+                    </small>
+                </div>
+            </div>
+
+            <div style="background: #e6f7ff; border: 1px solid #91d5ff; border-radius: 4px; padding: 12px; margin-top: 15px;">
+                <strong style="color: #1890ff;">💡 说明：</strong>
+                <ul style="margin: 8px 0 0 20px; color: #666;">
+                    <li>如果选择了上联核心交换机，拓扑图将显示此设备与核心的手动连接</li>
+                    <li>如果不选择，系统将通过LLDP自动发现此设备的上联关系</li>
+                    <li>手动配置的优先级高于LLDP自动发现</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- 按钮 -->
         <div style="margin-top: 30px; display: flex; gap: 10px;">
             <button type="submit" class="btn btn-primary" style="padding: 10px 30px;">

@@ -227,11 +227,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.6/dist/vis-network.min.js"></script>
 <script>
-// 构建vis.js网络拓扑图
-(function() {
-    const links = {{ links | tojson }};
+    // 构建vis.js网络拓扑图
+    (function () {
+        const links = {{ links | tojson
+    }};
     const centerDevice = "{{ device.name }}";
-    
+
     // 提取节点
     const nodesMap = new Map();
     const edgesArray = [];
@@ -387,6 +388,6 @@
             }
         }
     });
-})();
+}) ();
 </script>
 {% endblock %}

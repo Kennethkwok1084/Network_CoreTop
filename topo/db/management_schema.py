@@ -35,10 +35,14 @@ CREATE TABLE IF NOT EXISTS managed_devices (
     is_active INTEGER NOT NULL DEFAULT 1,
     auto_collect INTEGER NOT NULL DEFAULT 0,  -- 是否自动采集
     collect_interval INTEGER DEFAULT 86400,  -- 采集间隔（秒），默认24小时
+    uplink_device_id INTEGER,  -- 上联核心交换机设备ID
+    uplink_interface TEXT,  -- 上联接口（例如：1/6/0/6）
+    uplink_type TEXT DEFAULT 'auto',  -- 'auto'(LLDP自动发现) 或 'manual'(手动配置)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_by INTEGER,
-    FOREIGN KEY (created_by) REFERENCES users(id)
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (uplink_device_id) REFERENCES managed_devices(id)
 );
 """
 
